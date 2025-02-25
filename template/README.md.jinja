@@ -1,0 +1,31 @@
+# {{ project_name }}
+
+This is the **{{ project_name }}** service.
+
+It demonstrates:
+
+- A Dockerfile for AWS Lambda container images.
+- Terragrunt + Terraform infrastructure.
+- A serverless approach using AWS Lambda, ECR, and more.
+
+## Getting Started
+
+1. Update the environment variables in `.env` or your environment.
+2. Build the Docker image:
+
+    ```sh
+    just build
+    ```
+
+3. Deploy the infrastructure:
+
+   ```sh
+   just deploy-infra
+   ```
+
+4. Deploy the application:
+
+   ```sh
+   just deploy-app
+   ```
+

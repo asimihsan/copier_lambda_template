@@ -1,0 +1,15 @@
+include {
+  path = find_in_parent_folders("root.hcl")
+}
+
+dependency "infra" {
+  config_path = "../../infrastructure"
+}
+
+terraform {
+  source = "../../modules/{{ project_name }}"
+}
+
+inputs = {
+  project_prefix = "{{ project_name }}"
+}

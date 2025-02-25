@@ -1,0 +1,31 @@
+# Dockerfile for AWS Lambda, referencing the {{ project_name }} build
+
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS build
+
+RUN dnf update -y && \
+    dnf groupinstall -y "Development Tools" && \
+    dnf install -y gcc g++ tar curl-minimal git
+
+# You might install 'mise' or 'go' directly here
+# e.g.:
+# RUN curl https://mise.jdx.dev/install.sh | sh
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN go build -o /tmp/bootstrap -tags lambda.norpc -ldflags="-s -w" ./cmd/tokenissuer
+
+FROM public.ecr.aws/lambda/provided:al2023 as final
+
+COPY --from=build /tmp/bootstrap /var/runtime/bootstrap
+
+# optional: Add non-root user, etc.
+
+ENV PORT=7001
+EXPOSE 7001
+
+CMD ["bootstrap"]

@@ -1,0 +1,11 @@
+_updatable: true
+_subdirectory: template
+
+project_name:
+  type: str
+  help: "What is your project name?"
+  default: "example-project"
+
+_exclude:
+  - ".git"
+

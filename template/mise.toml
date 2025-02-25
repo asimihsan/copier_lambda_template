@@ -1,0 +1,3 @@
+[tools]
+go = "prefix:1.24"
+node = "lts"

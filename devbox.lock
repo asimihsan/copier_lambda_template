@@ -1,0 +1,117 @@
+{
+  "lockfile_version": "1",
+  "packages": {
+    "copier@latest": {
+      "last_modified": "2025-02-13T21:40:15Z",
+      "resolved": "github:NixOS/nixpkgs/ba0939c506a03c60a765cd7f7c43794816540eec#copier",
+      "source": "devbox-search",
+      "version": "9.4.1",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/asrpcjjnflf8p3dapzl4bclgvgwznz9l-copier-9.4.1",
+              "default": true
+            },
+            {
+              "name": "dist",
+              "path": "/nix/store/f9vyvwyfz1g4nl43g6falmszsmsp8fi0-copier-9.4.1-dist"
+            }
+          ],
+          "store_path": "/nix/store/asrpcjjnflf8p3dapzl4bclgvgwznz9l-copier-9.4.1"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/g7m8n57ll05i7g0k5483hl1mn08270n0-copier-9.4.1",
+              "default": true
+            },
+            {
+              "name": "dist",
+              "path": "/nix/store/h720f4hg8xwwgh4dzsfp7ik7fpd6qvdp-copier-9.4.1-dist"
+            }
+          ],
+          "store_path": "/nix/store/g7m8n57ll05i7g0k5483hl1mn08270n0-copier-9.4.1"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/i3mjj4p8djvx25nim8i73h2gsx2jn685-copier-9.4.1",
+              "default": true
+            },
+            {
+              "name": "dist",
+              "path": "/nix/store/p2vyw3z75gw2ffnyqq9g2rkbl8lpsk4r-copier-9.4.1-dist"
+            }
+          ],
+          "store_path": "/nix/store/i3mjj4p8djvx25nim8i73h2gsx2jn685-copier-9.4.1"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/31vhibzck7frgripz5cy2i7biks9qa70-copier-9.4.1",
+              "default": true
+            },
+            {
+              "name": "dist",
+              "path": "/nix/store/i819sd26mq4ww0ja52vzvxir0nix9d05-copier-9.4.1-dist"
+            }
+          ],
+          "store_path": "/nix/store/31vhibzck7frgripz5cy2i7biks9qa70-copier-9.4.1"
+        }
+      }
+    },
+    "mise@latest": {
+      "last_modified": "2025-02-08T12:54:32Z",
+      "resolved": "github:NixOS/nixpkgs/fa35a3c8e17a3de613240fea68f876e5b4896aec#mise",
+      "source": "devbox-search",
+      "version": "2025.2.1",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/209cxwcp0cfc95isyi36f9a86np8p2fs-mise-2025.2.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/209cxwcp0cfc95isyi36f9a86np8p2fs-mise-2025.2.1"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/0rg9gswiq2b36i2zkj0s54i1j1n20p7p-mise-2025.2.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/0rg9gswiq2b36i2zkj0s54i1j1n20p7p-mise-2025.2.1"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/cxqhi6lyi32yfqj1w8s14y5qd5dgddgn-mise-2025.2.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/cxqhi6lyi32yfqj1w8s14y5qd5dgddgn-mise-2025.2.1"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/imgz05dg3jyha0wl859s5z20s6v641v9-mise-2025.2.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/imgz05dg3jyha0wl859s5z20s6v641v9-mise-2025.2.1"
+        }
+      }
+    }
+  }
+}

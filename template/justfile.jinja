@@ -1,0 +1,23 @@
+# justfile for {{ project_name }}
+
+setup:
+    echo "Setting up dev environment for {{ project_name }}..."
+
+lint:
+    echo "Linting {{ project_name }}..."
+
+test:
+    go test ./... -v
+
+build:
+	docker build --target final -t {{ project_name }}:latest .
+
+push:
+	# Suppose we push to some ECR. The actual repository URI might be from Terraform outputs.
+	echo "Pushing {{ project_name }} to ECR..."
+
+deploy-infra:
+	cd terraform/infrastructure && terragrunt init && terragrunt apply -auto-approve
+
+deploy-app:
+	cd terraform/dev && terragrunt run-all apply -auto-approve
