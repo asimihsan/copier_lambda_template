@@ -1,0 +1,89 @@
+run:
+    go: "1.23"
+    timeout: 5m # Adjust as necessary to ensure linting completes, especially in larger projects.
+
+linters:
+    disable-all: true # Start with all linters disabled, then explicitly enable the ones you want.
+    enable:
+        - bodyclose # Ensures HTTP response bodies are closed.
+        - durationcheck # Checks for time.Duration expressions that may be misleading.
+        - errcheck # Checks that errors returned by functions are not ignored.
+        - exhaustive # Checks for missing cases in select and switch statements.
+        - gocritic # A linter that provides many different checks, customizable to your needs.
+        - goimports # Ensures imports are sorted and any necessary imports are added.
+        - gosec # Inspects source code for security problems by scanning the Go AST.
+        - gosimple # Simplifies code whenever possible, making it more readable.
+        - govet # Reports potential issues that could lead to bugs.
+        - ineffassign # Detects when assignments to existing variables are not used.
+        - misspell # Corrects commonly misspelled English words in source files.
+        - mnd # Checks for magic numbers.
+        - nilerr # Checks for a no-op error handling, which could indicate a bug.
+        - prealloc # Suggests pre-allocation of slices for performance improvement.
+        - staticcheck # A highly-regarded linter focusing on correctness and performance.
+        - typecheck # Like the front-end of a Go compiler, checks types.
+        - unconvert # Removes unnecessary type conversions.
+        - wsl # Checks whitespace rules.
+
+linters-settings:
+    cyclop: # Checks cyclomatic complexity.
+        max-complexity: 15
+        package-average: 10.0
+    errcheck: # Checks for ignored errors.
+        check-type-assertions: true # Checks for ignored type assertions.
+        check-blank: true # Checks for ignored assignments to blank identifiers.
+    exhaustive: # Checks for missing cases in select and switch statements.
+        default-signifies-exhaustive: true # Checks that default case is present.
+    funlen:
+        lines: 80
+        statements: 30
+        ignore-comments: true
+    lll: # Checks for long lines.
+        line-length: 120
+    mnd: # Checks for magic numbers.
+        checks:
+            - argument
+            - case
+            - condition
+            - operation
+            - return
+            - assign
+    prealloc: # Suggests pre-allocation of slices for performance improvement.
+        simple: true
+        range-loops: true
+        for-loops: false
+    wsl:
+        # When true, the append call must be “strict” – its appended value must come
+        # from a variable (or function call) on the line above.
+        strict-append: true
+
+        # Disallow “cuddling” of assignments with function calls:
+        allow-assign-and-call: false
+
+        # Disallow cuddling of assignments with any other statement:
+        allow-assign-and-anything: false
+
+        # Do not allow multiline assignments to be merged into a cuddled block:
+        allow-multiline-assign: false
+
+        # For control structures (e.g. switch cases) if the block is at least one line long,
+        # force a newline after the condition:
+        force-case-trailing-whitespace: 1
+
+        # Disallow a block from ending with a comment (which can be “cuddled” to the block’s last line):
+        allow-trailing-comment: false
+
+        # Disallow a group of leading comments separated by an empty line (i.e. force them to be “unsqueezed”):
+        allow-separated-leading-comment: false
+
+        # Do not allow multiple variable declarations (or other declarations) to be “cuddled” together.
+        allow-cuddle-declarations: false
+
+        # For if statements that check an error, force the assignment and the if to be joined.
+        force-err-cuddling: true
+
+        # When force-err-cuddling is enabled, check that the error variable (by default "err")
+        # is the one being used in the condition.
+        error-variable-names: ["err"]
+
+        # Require that a short declaration (:=) is only cuddled with another short declaration.
+        force-short-decl-cuddling: true

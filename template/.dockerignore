@@ -1,0 +1,5 @@
+.devbox
+.idea
+.jj
+**/.terragrunt-cache/*
+.aider*

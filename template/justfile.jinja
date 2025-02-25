@@ -2,6 +2,8 @@
 
 setup:
     echo "Setting up dev environment for {{ project_name }}..."
+    mise trust
+    mise install
 
 lint:
     echo "Linting {{ project_name }}..."

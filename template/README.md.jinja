@@ -10,20 +10,27 @@ It demonstrates:
 
 ## Getting Started
 
-1. Update the environment variables in `.env` or your environment.
-2. Build the Docker image:
+1. Install Jetify Devbox: https://www.jetify.com/docs/devbox/installing_devbox/
+2. Set up your environment:
+
+   ```sh
+   devbox install
+   just setup
+   ```
+3. Update the environment variables in `.env` or your environment.
+4. Build the Docker image:
 
     ```sh
     just build
     ```
 
-3. Deploy the infrastructure:
+5. Deploy the infrastructure:
 
    ```sh
    just deploy-infra
    ```
 
-4. Deploy the application:
+6. Deploy the application:
 
    ```sh
    just deploy-app
