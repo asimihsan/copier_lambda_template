@@ -6,6 +6,11 @@ project_name:
   help: "What is your project name?"
   default: "example-project"
 
+github_path:
+  type: str
+  help: "What is your GitHub path?"
+  default: "github.com/username/example-project"
+
 _exclude:
   - ".git"
 
