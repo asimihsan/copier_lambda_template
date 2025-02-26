@@ -6,27 +6,9 @@ provider "aws" {
   region = "us-west-2"
 }
 
-resource "aws_iam_role" "lambda_exec_role" {
-  name               = "${var.project_prefix}-lambda-role"
-  assume_role_policy = jsonencode({
-    Version   = "2012-10-17",
-    Statement = [{
-      Action    = "sts:AssumeRole",
-      Effect    = "Allow",
-      Principal = { Service = "lambda.amazonaws.com" }
-    }]
-  })
-}
-
-resource "aws_iam_policy_attachment" "lambda_policy_attach" {
-  name       = "${var.project_prefix}-lambda-policy"
-  roles      = [aws_iam_role.lambda_exec_role.name]
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
 resource "null_resource" "sam_deploy" {
   provisioner "local-exec" {
-    command = "sam deploy --template-file ${var.sam_template} --stack-name ${var.stack_name} --capabilities CAPABILITY_IAM --parameter-overrides EcrRepoUrl=${var.ecr_repo_url} LambdaRole=${aws_iam_role.lambda_exec_role.arn}"
+    command = "mise x aws-sam -- sam deploy --template-file ${var.sam_template} --stack-name ${var.stack_name} --capabilities CAPABILITY_IAM --parameter-overrides EcrRepoUrl=${var.ecr_repo_url} LambdaRole=${aws_iam_role.lambda_exec_role.arn}"
   }
   
   # Add more comprehensive triggers to ensure redeployment when needed

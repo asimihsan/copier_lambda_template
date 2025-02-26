@@ -43,7 +43,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
 # Copy the rest of our application
-COPY --link . .
+COPY . .
 
 # Build the application
 RUN --mount=type=cache,target=/go/pkg/mod \

@@ -1,4 +1,4 @@
-include {
+{# include {
   path = find_in_parent_folders("root.hcl")
 }
 
@@ -29,4 +29,4 @@ inputs = {
   sam_template   = "sam/template.yaml"
   stack_name     = "{{ project_name }}-lambda"
   ecr_repo_url   = dependency.infra.outputs.repository_url
-}
+} #}

@@ -16,15 +16,18 @@ Resources:
     Properties:
       FunctionName: {{ project_name_hyphens }}-lambda
       PackageType: Image
-      ImageUri: !Ref EcrRepoUrl
       Role: !Ref LambdaRole
       Architectures:
-        - ARM64
+        - arm64
       MemorySize: 128
       Timeout: 10
       Environment:
         Variables:
           ENVIRONMENT: dev
+    Metadata:
+      DockerTag: latest
+      DockerContext: ../
+      Dockerfile: Dockerfile
 
 Outputs:
   LambdaFunction:
