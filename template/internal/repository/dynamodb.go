@@ -7,9 +7,10 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
@@ -20,61 +21,32 @@ type DynamoDBRepository struct {
 	tableName string
 }
 
+var _ UserRepository = (*DynamoDBRepository)(nil)
+
 // NewDynamoDBRepository creates a new DynamoDB repository
 func NewDynamoDBRepository(endpoint, region, tableName string) (*DynamoDBRepository, error) {
-	// Load the configuration
-	customResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-		if endpoint != "" {
-			return aws.Endpoint{
-				PartitionID:   "aws",
-				URL:           endpoint,
-				SigningRegion: region,
-			}, nil
-		}
-		// Return EndpointNotFoundError to allow the service to fallback to its default resolution
-		return aws.Endpoint{}, &aws.EndpointNotFoundError{}
-	})
-
 	cfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithRegion(region),
-		config.WithEndpointResolverWithOptions(customResolver),
+		// Using dummy credentials for local development
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			"dummy", "dummy", "dummy",
+		)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
-	// Create DynamoDB client
-	client := dynamodb.NewFromConfig(cfg)
-
-	// Check if table exists, create if it doesn't
-	_, err = client.DescribeTable(context.Background(), &dynamodb.DescribeTableInput{
-		TableName: aws.String(tableName),
-	})
-	if err != nil {
-		log.Info().Msgf("Table %s does not exist, creating...", tableName)
-		_, err = client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
-			AttributeDefinitions: []types.AttributeDefinition{
-				{
-					AttributeName: aws.String("id"),
-					AttributeType: types.ScalarAttributeTypeS,
-				},
-			},
-			KeySchema: []types.KeySchemaElement{
-				{
-					AttributeName: aws.String("id"),
-					KeyType:       types.KeyTypeHash,
-				},
-			},
-			ProvisionedThroughput: &types.ProvisionedThroughput{
-				ReadCapacityUnits:  aws.Int64(5),
-				WriteCapacityUnits: aws.Int64(5),
-			},
-			TableName: aws.String(tableName),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create table: %w", err)
+	// Create service options
+	var options func(*dynamodb.Options)
+	
+	// If endpoint is specified, use BaseEndpoint (the modern approach)
+	if endpoint != "" {
+		options = func(o *dynamodb.Options) {
+			o.BaseEndpoint = aws.String(endpoint)
 		}
 	}
+
+	client := dynamodb.NewFromConfig(cfg, options)
 
 	return &DynamoDBRepository{
 		client:    client,
@@ -93,7 +65,8 @@ func (r *DynamoDBRepository) ListUsers(ctx context.Context) ([]User, error) {
 		return nil, fmt.Errorf("failed to scan users: %w", err)
 	}
 
-	var users []User
+	users := make([]User, 0, len(result.Items))
+	
 	for _, item := range result.Items {
 		var user User
 		if err := attributevalue.UnmarshalMap(item, &user); err != nil {

@@ -23,7 +23,7 @@ type Server struct {
 }
 
 // New creates a new server
-func New(config *config.Config, handler *handler.ServerImpl) *Server {
+func New(config *config.Config, si handler.ServerInterface) *Server {
 	e := echo.New()
 
 	// Middleware
@@ -57,7 +57,7 @@ func New(config *config.Config, handler *handler.ServerImpl) *Server {
 
 	// Setup routes
 	api := e.Group(config.Server.BasePath)
-	handler.RegisterHandlers(api)
+    handler.RegisterHandlers(api, si)
 
 	return &Server{
 		echo:   e,
@@ -81,7 +81,7 @@ func (s *Server) Start() error {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second) //nolint:mnd
 	defer cancel()
 
 	log.Info().Msg("Shutting down server")

@@ -38,7 +38,7 @@ func LoadConfig() (*Config, error) {
 
 	return &Config{
 		Server: ServerConfig{
-			Port:     getEnvAsInt("PORT", 8080),
+			Port:     getEnvAsInt("PORT", 8080), //nolint:mnd
 			BasePath: getEnv("BASE_PATH", "/api/v1"),
 		},
 		Database: DatabaseConfig{
