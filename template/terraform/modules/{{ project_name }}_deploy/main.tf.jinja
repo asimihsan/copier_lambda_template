@@ -1,0 +1,45 @@
+terraform {
+  backend "s3" {}
+}
+
+provider "aws" {
+  region = "us-west-2"
+}
+
+resource "aws_iam_role" "lambda_exec_role" {
+  name               = "${var.project_prefix}-lambda-role"
+  assume_role_policy = jsonencode({
+    Version   = "2012-10-17",
+    Statement = [{
+      Action    = "sts:AssumeRole",
+      Effect    = "Allow",
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_policy_attachment" "lambda_policy_attach" {
+  name       = "${var.project_prefix}-lambda-policy"
+  roles      = [aws_iam_role.lambda_exec_role.name]
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "null_resource" "sam_deploy" {
+  provisioner "local-exec" {
+    command = "sam deploy --template-file ${var.sam_template} --stack-name ${var.stack_name} --capabilities CAPABILITY_IAM --parameter-overrides EcrRepoUrl=${var.ecr_repo_url} LambdaRole=${aws_iam_role.lambda_exec_role.arn}"
+  }
+  
+  # Add more comprehensive triggers to ensure redeployment when needed
+  triggers = {
+    ecr_repo_url = var.ecr_repo_url
+    stack_name   = var.stack_name
+    template_hash = filemd5(var.sam_template)
+    role_arn = aws_iam_role.lambda_exec_role.arn
+  }
+}
+
+# Output the function name for other modules to reference
+output "lambda_function_name" {
+  value = "${var.project_prefix}-lambda"
+  description = "The name of the deployed Lambda function"
+}

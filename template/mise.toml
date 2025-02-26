@@ -1,7 +1,9 @@
 [tools]
+aws-sam = "latest"
 go = "prefix:1.24"
 golangci-lint = "latest"
 oapi-codegen = "latest"
+python = "prefix:3.12"
 
 [settings]
 experimental = true

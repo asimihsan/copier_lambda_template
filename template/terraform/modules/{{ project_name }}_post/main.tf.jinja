@@ -1,0 +1,16 @@
+terraform {
+  backend "s3" {}
+}
+
+provider "aws" {
+  region = "us-west-2"
+}
+
+resource "aws_lambda_function_url" "lambda_url" {
+  function_name     = var.lambda_function_name
+  authorization_type = "NONE"
+}
+
+output "lambda_function_url" {
+  value = aws_lambda_function_url.lambda_url.function_url
+}

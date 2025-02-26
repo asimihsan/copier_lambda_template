@@ -1,0 +1,32 @@
+include {
+  path = find_in_parent_folders("root.hcl")
+}
+
+dependency "infra" {
+  config_path = "../../infrastructure"
+
+  mock_outputs = {
+    infra_output = "mock-infra-output"
+  }
+}
+
+dependency "{{ project_name }}_pre" {
+  config_path = "../{{ project_name }}_pre"
+
+  mock_outputs = {
+    lambda_function_name = "mock-lambda-function-name"
+  }
+}
+
+terraform {
+  source = "../../modules/{{ project_name }}_deploy"
+}
+
+inputs = {
+  project_prefix = "{{ project_name_hyphens }}-dev-{{ random_suffix }}"
+  region         = "us-west-2"
+
+  sam_template   = "sam/template.yaml"
+  stack_name     = "{{ project_name }}-lambda"
+  ecr_repo_url   = dependency.infra.outputs.repository_url
+}

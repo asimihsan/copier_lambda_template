@@ -3,6 +3,8 @@
 setup:
     echo "Setting up dev environment for {{ project_name }}..."
     mise trust
+    mise use -g 'python@prefix:3.12'
+    mise x python -- pip install --user pipx
     mise install
     mise x go -- go mod tidy
 
@@ -52,3 +54,16 @@ terraform-dev-plan:
 
 terraform-dev-apply:
     cd terraform/dev && terragrunt run-all apply --tf-forward-stdout
+
+sam-deploy:
+    @echo "Deploying Lambda via SAM CLI..."
+    # Ensure your built binary and SAM template are up-to-date.
+    sam deploy --template-file sam/template.yaml --stack-name {{ project_name_hyphens }}-lambda --capabilities CAPABILITY_IAM
+
+tf-get-ecr:
+    @echo "Retrieving ECR repository URL..."
+    terraform -chdir=terraform/infrastructure output -raw repository_url
+
+lambda-url:
+    @echo "Retrieving Lambda Function URL..."
+    terraform -chdir=terraform/modules/lambda_function_url output -raw lambda_function_url

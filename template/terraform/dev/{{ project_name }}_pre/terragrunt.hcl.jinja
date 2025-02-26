@@ -11,9 +11,10 @@ dependency "infra" {
 }
 
 terraform {
-  source = "../../modules/{{ project_name }}"
+  source = "../../modules/{{ project_name }}_pre"
 }
 
 inputs = {
   project_prefix = "{{ project_name_hyphens }}-dev-{{ random_suffix }}"
+  region         = "us-west-2"
 }

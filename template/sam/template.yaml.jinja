@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  EcrRepoUrl:
+    Type: String
+    Description: ECR Repository URL
+  
+  LambdaRole:
+    Type: String
+    Description: IAM Role ARN for Lambda execution
+
+Resources:
+  MyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: {{ project_name_hyphens }}-lambda
+      PackageType: Image
+      ImageUri: !Ref EcrRepoUrl
+      Role: !Ref LambdaRole
+      Architectures:
+        - ARM64
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          ENVIRONMENT: dev
+
+Outputs:
+  LambdaFunction:
+    Description: Lambda Function Name
+    Value: !Ref MyFunction
+  FunctionName:
+    Description: Lambda Function Name for URL configuration
+    Value: {{ project_name_hyphens }}-lambda

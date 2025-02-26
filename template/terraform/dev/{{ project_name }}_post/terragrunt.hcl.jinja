@@ -1,0 +1,32 @@
+include {
+  path = find_in_parent_folders("root.hcl")
+}
+
+dependency "{{ project_name }}_deploy" {
+  config_path = "../{{ project_name }}_deploy"
+
+  mock_outputs = {
+    lambda_function_name = "mock-lambda-function-name"
+  }
+}
+
+dependency "infra" {
+  config_path = "../../infrastructure"
+
+  mock_outputs = {
+    infra_output = "mock-infra-output"
+  }
+}
+
+terraform {
+  source = "../../modules/{{ project_name }}_post"
+}
+
+# No need for dependency on sam module since we know the function name
+# directly from the SAM template
+inputs = {
+  project_prefix = "{{ project_name_hyphens }}-dev-{{ random_suffix }}"
+  region         = "us-west-2"
+
+  lambda_function_name = "{{ project_name }}-lambda"
+}

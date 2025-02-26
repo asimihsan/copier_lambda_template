@@ -22,6 +22,9 @@ RUN --mount=type=cache,target=/var/cache/mise \
     . ~/.bashrc && \
     cd /app && \
     mise trust && \
+    mise use -g 'python@prefix:3.12' && \
+    mise x python -- pip install -U pip && \
+    mise x python -- pip install --user pipx && \
     mise install
 
 ARG TARGETPLATFORM

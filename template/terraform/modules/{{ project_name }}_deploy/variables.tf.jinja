@@ -1,0 +1,21 @@
+variable "region" {
+  type = string
+}
+variable "project_prefix" {
+  type = string
+}
+
+variable "sam_template" {
+  type        = string
+  description = "Path to the SAM template file"
+}
+
+variable "stack_name" {
+  type        = string
+  description = "Name of the SAM stack"
+}
+
+variable "ecr_repo_url" {
+  type        = string
+  description = "ECR repository URL"
+}
