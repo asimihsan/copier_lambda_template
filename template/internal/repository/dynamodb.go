@@ -5,54 +5,67 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
 
 // DynamoDBRepository implements the UserRepository interface using DynamoDB
 type DynamoDBRepository struct {
-	client    *dynamodb.DynamoDB
+	client    *dynamodb.Client
 	tableName string
 }
 
 // NewDynamoDBRepository creates a new DynamoDB repository
 func NewDynamoDBRepository(endpoint, region, tableName string) (*DynamoDBRepository, error) {
-	// Initialize a session
-	sess, err := session.NewSession(&aws.Config{
-		Endpoint: aws.String(endpoint),
-		Region:   aws.String(region),
+	// Load the configuration
+	customResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+		if endpoint != "" {
+			return aws.Endpoint{
+				PartitionID:   "aws",
+				URL:           endpoint,
+				SigningRegion: region,
+			}, nil
+		}
+		// Return EndpointNotFoundError to allow the service to fallback to its default resolution
+		return aws.Endpoint{}, &aws.EndpointNotFoundError{}
 	})
+
+	cfg, err := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion(region),
+		config.WithEndpointResolverWithOptions(customResolver),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create AWS session: %w", err)
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
 	// Create DynamoDB client
-	client := dynamodb.New(sess)
+	client := dynamodb.NewFromConfig(cfg)
 
 	// Check if table exists, create if it doesn't
-	_, err = client.DescribeTable(&dynamodb.DescribeTableInput{
+	_, err = client.DescribeTable(context.Background(), &dynamodb.DescribeTableInput{
 		TableName: aws.String(tableName),
 	})
 	if err != nil {
 		log.Info().Msgf("Table %s does not exist, creating...", tableName)
-		_, err = client.CreateTable(&dynamodb.CreateTableInput{
-			AttributeDefinitions: []*dynamodb.AttributeDefinition{
+		_, err = client.CreateTable(context.Background(), &dynamodb.CreateTableInput{
+			AttributeDefinitions: []types.AttributeDefinition{
 				{
 					AttributeName: aws.String("id"),
-					AttributeType: aws.String("S"),
+					AttributeType: types.ScalarAttributeTypeS,
 				},
 			},
-			KeySchema: []*dynamodb.KeySchemaElement{
+			KeySchema: []types.KeySchemaElement{
 				{
 					AttributeName: aws.String("id"),
-					KeyType:       aws.String("HASH"),
+					KeyType:       types.KeyTypeHash,
 				},
 			},
-			ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
+			ProvisionedThroughput: &types.ProvisionedThroughput{
 				ReadCapacityUnits:  aws.Int64(5),
 				WriteCapacityUnits: aws.Int64(5),
 			},
@@ -75,7 +88,7 @@ func (r *DynamoDBRepository) ListUsers(ctx context.Context) ([]User, error) {
 		TableName: aws.String(r.tableName),
 	}
 
-	result, err := r.client.ScanWithContext(ctx, input)
+	result, err := r.client.Scan(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan users: %w", err)
 	}
@@ -83,7 +96,7 @@ func (r *DynamoDBRepository) ListUsers(ctx context.Context) ([]User, error) {
 	var users []User
 	for _, item := range result.Items {
 		var user User
-		if err := dynamodbattribute.UnmarshalMap(item, &user); err != nil {
+		if err := attributevalue.UnmarshalMap(item, &user); err != nil {
 			log.Error().Err(err).Msg("Failed to unmarshal user")
 			continue
 		}
@@ -97,14 +110,12 @@ func (r *DynamoDBRepository) ListUsers(ctx context.Context) ([]User, error) {
 func (r *DynamoDBRepository) GetUser(ctx context.Context, id string) (*User, error) {
 	input := &dynamodb.GetItemInput{
 		TableName: aws.String(r.tableName),
-		Key: map[string]*dynamodb.AttributeValue{
-			"id": {
-				S: aws.String(id),
-			},
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{Value: id},
 		},
 	}
 
-	result, err := r.client.GetItemWithContext(ctx, input)
+	result, err := r.client.GetItem(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
@@ -114,7 +125,7 @@ func (r *DynamoDBRepository) GetUser(ctx context.Context, id string) (*User, err
 	}
 
 	var user User
-	if err := dynamodbattribute.UnmarshalMap(result.Item, &user); err != nil {
+	if err := attributevalue.UnmarshalMap(result.Item, &user); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal user: %w", err)
 	}
 
@@ -132,7 +143,7 @@ func (r *DynamoDBRepository) CreateUser(ctx context.Context, userCreate UserCrea
 		UpdatedAt: now,
 	}
 
-	item, err := dynamodbattribute.MarshalMap(user)
+	item, err := attributevalue.MarshalMap(user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal user: %w", err)
 	}
@@ -142,7 +153,7 @@ func (r *DynamoDBRepository) CreateUser(ctx context.Context, userCreate UserCrea
 		Item:      item,
 	}
 
-	_, err = r.client.PutItemWithContext(ctx, input)
+	_, err = r.client.PutItem(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
@@ -171,7 +182,7 @@ func (r *DynamoDBRepository) UpdateUser(ctx context.Context, id string, userUpda
 	existingUser.UpdatedAt = time.Now()
 
 	// Save the updated user
-	item, err := dynamodbattribute.MarshalMap(existingUser)
+	item, err := attributevalue.MarshalMap(existingUser)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal user: %w", err)
 	}
@@ -181,7 +192,7 @@ func (r *DynamoDBRepository) UpdateUser(ctx context.Context, id string, userUpda
 		Item:      item,
 	}
 
-	_, err = r.client.PutItemWithContext(ctx, input)
+	_, err = r.client.PutItem(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update user: %w", err)
 	}
@@ -193,14 +204,12 @@ func (r *DynamoDBRepository) UpdateUser(ctx context.Context, id string, userUpda
 func (r *DynamoDBRepository) DeleteUser(ctx context.Context, id string) error {
 	input := &dynamodb.DeleteItemInput{
 		TableName: aws.String(r.tableName),
-		Key: map[string]*dynamodb.AttributeValue{
-			"id": {
-				S: aws.String(id),
-			},
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{Value: id},
 		},
 	}
 
-	_, err := r.client.DeleteItemWithContext(ctx, input)
+	_, err := r.client.DeleteItem(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to delete user: %w", err)
 	}
