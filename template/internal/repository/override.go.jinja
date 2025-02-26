@@ -31,5 +31,3 @@ type OverrideRepository interface {
 	ApproveOverride(ctx context.Context, id string, approvedBy string) error
 	RejectOverride(ctx context.Context, id string, rejectedBy string) error
 }
-
-// Stub implementation – implement using DynamoDB similar to your UserRepository.

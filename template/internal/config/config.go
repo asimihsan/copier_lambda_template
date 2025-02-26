@@ -10,8 +10,9 @@ import (
 
 // SlackConfig holds configuration for Slack integration.
 type SlackConfig struct {
-	SigningSecret string
-	BotToken      string
+	SigningSecret    string
+	BotToken         string
+	OverrideTableName string
 }
 
 // Config holds all configuration for the application, including Slack settings.

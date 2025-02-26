@@ -47,8 +47,8 @@ push:
 terraform-init:
     cd terraform && terragrunt run-all init --tf-forward-stdout
 
-terraform-plan:
-    cd terraform && terragrunt run-all plan --tf-forward-stdout
+terraform-dev-plan:
+    cd terraform/dev && terragrunt run-all plan --tf-forward-stdout
 
-terraform-apply:
-    cd terraform && terragrunt run-all apply --tf-forward-stdout
+terraform-dev-apply:
+    cd terraform/dev && terragrunt run-all apply --tf-forward-stdout

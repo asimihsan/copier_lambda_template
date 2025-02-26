@@ -18,9 +18,12 @@ import (
 func NewSlackHandler(repo repository.UserRepository, slackConfig config.SlackConfig) http.Handler {
 	logger := log.Logger
 
+	// Create a DynamoDB client for the override repository
+	overrideRepo := repository.NewDynamoDBOverrideRepository(repo.(*repository.DynamoDBRepository).Client, slackConfig.OverrideTableName)
+	
 	registry := slackcmd.NewRegistry(logger)
 	registry.Register("rotation", slackcmd.NewRotationCommand())
-	registry.Register("override", slackcmd.NewOverrideCommand())
+	registry.Register("override", slackcmd.NewOverrideCommand(overrideRepo))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()

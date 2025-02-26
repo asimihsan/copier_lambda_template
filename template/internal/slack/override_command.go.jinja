@@ -4,17 +4,22 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/slack-go/slack"
+
+	"{{ github_path }}/internal/repository"
 )
 
-// OverrideCommand handles override-related commands (e.g. "request", "approve")
+// OverrideCommand handles override-related commands (e.g. "request", "approve", "reject", "list")
 type OverrideCommand struct {
-	// In future, you can inject an OverrideRepository here.
+	repo repository.OverrideRepository
 }
 
-func NewOverrideCommand() *OverrideCommand {
-	return &OverrideCommand{}
+func NewOverrideCommand(repo repository.OverrideRepository) *OverrideCommand {
+	return &OverrideCommand{
+		repo: repo,
+	}
 }
 
 func (c *OverrideCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand, args string) (slack.Msg, error) {
@@ -23,26 +28,77 @@ func (c *OverrideCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 	if len(fields) == 0 {
 		return slack.Msg{
 			ResponseType: slack.ResponseTypeEphemeral,
-			Text:         "Usage: /override <request|approve> [parameters]",
+			Text:         "Usage: /override <request|approve|reject|list> [parameters]",
 		}, nil
 	}
 
 	switch sub := strings.ToLower(fields[0]); sub {
+	case "list":
+		overrides, err := c.repo.ListOverrides(ctx)
+		if err != nil {
+			return slack.Msg{}, fmt.Errorf("failed to list overrides: %w", err)
+		}
+
+		if len(overrides) == 0 {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         "No overrides found.",
+			}, nil
+		}
+
+		var text strings.Builder
+		text.WriteString("*Current Overrides:*\n")
+		for _, o := range overrides {
+			text.WriteString(fmt.Sprintf(
+				"• ID: `%s` | Requested by: <@%s> | %s to %s | Status: %s\n",
+				o.OverrideID,
+				o.RequestedBy,
+				o.StartDate.Format("2006-01-02"),
+				o.EndDate.Format("2006-01-02"),
+				o.Status,
+			))
+		}
+
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         text.String(),
+		}, nil
+
 	case "request":
 		// Expect: /override request [start_date] [end_date]
 		if len(fields) < 3 { //nolint:mnd
 			return slack.Msg{
 				ResponseType: slack.ResponseTypeEphemeral,
-				Text:         "Usage: /override request <start_date> <end_date>",
+				Text:         "Usage: /override request <start_date> <end_date> (format: YYYY-MM-DD)",
 			}, nil
 		}
-		startDate := fields[1]
-		endDate := fields[2]
-		// Stub response; later connect to DynamoDB override creation.
+		
+		startDate, err := time.Parse("2006-01-02", fields[1])
+		if err != nil {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Invalid start date format. Please use YYYY-MM-DD. Error: %v", err),
+			}, nil
+		}
+		
+		endDate, err := time.Parse("2006-01-02", fields[2])
+		if err != nil {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Invalid end date format. Please use YYYY-MM-DD. Error: %v", err),
+			}, nil
+		}
+		
+		override, err := c.repo.CreateOverride(ctx, cmd.UserID, startDate, endDate)
+		if err != nil {
+			return slack.Msg{}, fmt.Errorf("failed to create override: %w", err)
+		}
+		
 		return slack.Msg{
 			ResponseType: slack.ResponseTypeInChannel,
-			Text:         fmt.Sprintf("Override request submitted for %s through %s.", startDate, endDate),
+			Text:         fmt.Sprintf("Override request `%s` submitted by <@%s> for %s through %s.", override.OverrideID, cmd.UserID, startDate.Format("2006-01-02"), endDate.Format("2006-01-02")),
 		}, nil
+
 	case "approve":
 		// Expect: /override approve <override_id>
 		if len(fields) < 2 { //nolint:mnd
@@ -51,16 +107,82 @@ func (c *OverrideCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 				Text:         "Usage: /override approve <override_id>",
 			}, nil
 		}
+		
 		overrideID := fields[1]
-		// Stub response; later connect to the approval workflow.
+		
+		// First check if the override exists
+		override, err := c.repo.GetOverride(ctx, overrideID)
+		if err != nil {
+			return slack.Msg{}, fmt.Errorf("failed to get override: %w", err)
+		}
+		
+		if override == nil {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Override with ID `%s` not found.", overrideID),
+			}, nil
+		}
+		
+		if override.Status != repository.OverrideStatusPending {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Override `%s` is already %s.", overrideID, override.Status),
+			}, nil
+		}
+		
+		if err := c.repo.ApproveOverride(ctx, overrideID, cmd.UserID); err != nil {
+			return slack.Msg{}, fmt.Errorf("failed to approve override: %w", err)
+		}
+		
 		return slack.Msg{
 			ResponseType: slack.ResponseTypeInChannel,
-			Text:         fmt.Sprintf("Override %s approved.", overrideID),
+			Text:         fmt.Sprintf("Override `%s` approved by <@%s>.", overrideID, cmd.UserID),
 		}, nil
+
+	case "reject":
+		// Expect: /override reject <override_id>
+		if len(fields) < 2 { //nolint:mnd
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         "Usage: /override reject <override_id>",
+			}, nil
+		}
+		
+		overrideID := fields[1]
+		
+		// First check if the override exists
+		override, err := c.repo.GetOverride(ctx, overrideID)
+		if err != nil {
+			return slack.Msg{}, fmt.Errorf("failed to get override: %w", err)
+		}
+		
+		if override == nil {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Override with ID `%s` not found.", overrideID),
+			}, nil
+		}
+		
+		if override.Status != repository.OverrideStatusPending {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Override `%s` is already %s.", overrideID, override.Status),
+			}, nil
+		}
+		
+		if err := c.repo.RejectOverride(ctx, overrideID, cmd.UserID); err != nil {
+			return slack.Msg{}, fmt.Errorf("failed to reject override: %w", err)
+		}
+		
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeInChannel,
+			Text:         fmt.Sprintf("Override `%s` rejected by <@%s>.", overrideID, cmd.UserID),
+		}, nil
+
 	default:
 		return slack.Msg{
 			ResponseType: slack.ResponseTypeEphemeral,
-			Text:         "Invalid override command. Use `request` or `approve`.",
+			Text:         "Invalid override command. Use `request`, `approve`, `reject`, or `list`.",
 		}, nil
 	}
 }
