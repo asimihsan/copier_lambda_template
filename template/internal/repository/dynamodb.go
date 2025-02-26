@@ -24,34 +24,41 @@ type DynamoDBRepository struct {
 var _ UserRepository = (*DynamoDBRepository)(nil)
 
 // NewDynamoDBRepository creates a new DynamoDB repository
-func NewDynamoDBRepository(endpoint, region, tableName string) (*DynamoDBRepository, error) {
-	cfg, err := config.LoadDefaultConfig(context.Background(),
-		config.WithRegion(region),
-		// Using dummy credentials for local development
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			"dummy", "dummy", "dummy",
-		)),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	// Create service options
-	var options func(*dynamodb.Options)
-	
-	// If endpoint is specified, use BaseEndpoint (the modern approach)
-	if endpoint != "" {
-		options = func(o *dynamodb.Options) {
-			o.BaseEndpoint = aws.String(endpoint)
-		}
-	}
-
-	client := dynamodb.NewFromConfig(cfg, options)
-
-	return &DynamoDBRepository{
-		client:    client,
-		tableName: tableName,
-	}, nil
+func NewDynamoDBRepository(endpoint, region, tableName string, isLocal bool) (*DynamoDBRepository, error) {
+    // Initialize configuration options slice
+    configOptions := []func(*config.LoadOptions) error{
+        config.WithRegion(region),
+    }
+    
+    // Add dummy credentials only for local development
+    if isLocal {
+        configOptions = append(configOptions, config.WithCredentialsProvider(
+            credentials.NewStaticCredentialsProvider("dummy", "dummy", "dummy"),
+        ))
+    }
+    
+    // Load AWS configuration
+    cfg, err := config.LoadDefaultConfig(context.Background(), configOptions...)
+    if err != nil {
+        return nil, fmt.Errorf("failed to load AWS config: %w", err)
+    }
+    
+    // Create service options
+    var options func(*dynamodb.Options)
+    
+    // If endpoint is specified, use BaseEndpoint (the modern approach)
+    if endpoint != "" {
+        options = func(o *dynamodb.Options) {
+            o.BaseEndpoint = aws.String(endpoint)
+        }
+    }
+    
+    client := dynamodb.NewFromConfig(cfg, options)
+    
+    return &DynamoDBRepository{
+        client:    client,
+        tableName: tableName,
+    }, nil
 }
 
 // ListUsers returns all users

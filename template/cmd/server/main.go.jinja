@@ -1,33 +1,117 @@
 package main
 
 import (
-	"github.com/rs/zerolog/log"
+	"fmt"
+	"os"
+
 	"{{ github_path }}/internal/config"
 	"{{ github_path }}/internal/handler"
 	"{{ github_path }}/internal/repository"
 	"{{ github_path }}/internal/server"
 	"{{ github_path }}/pkg/logger"
+	"github.com/rs/zerolog/log"
+	"github.com/urfave/cli/v2"
 )
 
 func main() {
-	// Load configuration
-	cfg, err := config.LoadConfig()
+	app := &cli.App{
+		Name:  "rotateorama",
+		Usage: "A user management service with DynamoDB backend",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "local",
+				Aliases: []string{"l"},
+				Usage:   "Run in local development mode with DynamoDB local",
+				Value:   false,
+				EnvVars: []string{"APP_LOCAL_MODE"},
+			},
+			&cli.StringFlag{
+				Name:    "dynamodb-endpoint",
+				Usage:   "DynamoDB endpoint URL (empty for AWS service endpoint)",
+				Value:   "http://localhost:8000",
+				EnvVars: []string{"DYNAMODB_ENDPOINT"},
+			},
+			&cli.StringFlag{
+				Name:    "dynamodb-region",
+				Usage:   "AWS region for DynamoDB",
+				Value:   "us-east-1",
+				EnvVars: []string{"DYNAMODB_REGION"},
+			},
+			&cli.StringFlag{
+				Name:    "dynamodb-table",
+				Usage:   "DynamoDB table name",
+				Value:   "users",
+				EnvVars: []string{"DYNAMODB_TABLE_NAME"},
+			},
+			&cli.IntFlag{
+				Name:    "port",
+				Usage:   "HTTP server port",
+				Value:   8080, //nolint:mnd
+				EnvVars: []string{"PORT"},
+			},
+			&cli.StringFlag{
+				Name:    "base-path",
+				Usage:   "Base path for API endpoints",
+				Value:   "/api/v1",
+				EnvVars: []string{"BASE_PATH"},
+			},
+			&cli.StringFlag{
+				Name:    "log-level",
+				Usage:   "Log level (debug, info, warn, error)",
+				Value:   "info",
+				EnvVars: []string{"LOG_LEVEL"},
+			},
+		},
+		Action: run,
+	}
+
+	err := app.Run(os.Args)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load configuration")
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(c *cli.Context) error {
+	// Create config from CLI flags
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Port:     c.Int("port"),
+			BasePath: c.String("base-path"),
+		},
+		Database: config.DatabaseConfig{
+			DynamoDBEndpoint:  c.String("dynamodb-endpoint"),
+			DynamoDBRegion:    c.String("dynamodb-region"),
+			DynamoDBTableName: c.String("dynamodb-table"),
+			IsLocal:           c.Bool("local"),
+		},
+		LogLevel: c.String("log-level"),
+	}
+
+	// Clear endpoint if not in local mode
+	if !cfg.Database.IsLocal {
+		cfg.Database.DynamoDBEndpoint = ""
 	}
 
 	// Setup logger
 	logger.Setup(cfg.LogLevel)
-	log.Info().Msg("Starting application")
+	log.Info().
+		Bool("localMode", cfg.Database.IsLocal).
+		Str("region", cfg.Database.DynamoDBRegion).
+		Str("endpoint", cfg.Database.DynamoDBEndpoint).
+		Int("port", cfg.Server.Port).
+		Msg("Starting application")
 
 	// Create repository
 	repo, err := repository.NewDynamoDBRepository(
 		cfg.Database.DynamoDBEndpoint,
 		cfg.Database.DynamoDBRegion,
 		cfg.Database.DynamoDBTableName,
+		cfg.Database.IsLocal,
 	)
+
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create repository")
+		return fmt.Errorf("failed to create repository: %w", err)
 	}
 
 	// Create handler
@@ -35,7 +119,6 @@ func main() {
 
 	// Create and start server
 	srv := server.New(cfg, h)
-	if err := srv.Start(); err != nil {
-		log.Fatal().Err(err).Msg("Failed to start server")
-	}
+
+	return srv.Start()
 }
