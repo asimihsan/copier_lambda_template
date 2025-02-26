@@ -4,12 +4,14 @@ setup:
     echo "Setting up dev environment for {{ project_name }}..."
     mise trust
     mise install
+    mise x go -- go mod tidy
 
 lint:
     echo "Linting {{ project_name }}..."
+    mise x go -- golangci-lint run --fix ./...
 
 test:
-    go test ./... -v
+    mise x go -- go test ./... -v
 
 build:
 	docker build --target final -t {{ project_name }}:latest .
