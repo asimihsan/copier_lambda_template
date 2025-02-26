@@ -45,7 +45,7 @@ COPY --link . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     . ~/.bashrc && \
-    go build -o /tmp/bootstrap -tags lambda.norpc -ldflags="-s -w" ./cmd/{{ project_name }}
+    go build -o /tmp/bootstrap -tags lambda.norpc -ldflags="-s -w" ./cmd/server
 
 FROM public.ecr.aws/lambda/provided:al2023 as final
 

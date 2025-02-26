@@ -6,6 +6,16 @@ setup:
     mise install
     mise x go -- go mod tidy
 
+generate:
+    mkdir -p internal/handler
+    mise x oapi-codegen -- \
+        oapi-codegen \
+            -package handler \
+            -generate types,server,spec \
+            -o internal/handler/api.gen.go \
+            api/openapi.yaml
+    mise x go -- go mod tidy
+
 lint:
     echo "Linting {{ project_name }}..."
     mise x go -- golangci-lint run --fix ./...
@@ -14,14 +24,20 @@ test:
     mise x go -- go test ./... -v
 
 build:
-	docker build --target final -t {{ project_name }}:latest .
+    mise x go -- go build -o bin/server cmd/server/main.go
+
+run:
+    mise x go -- go run cmd/server/main.go
+
+docker-build:
+    docker build --target final -t {{ project_name }}:latest .
 
 push:
-	# Suppose we push to some ECR. The actual repository URI might be from Terraform outputs.
-	echo "Pushing {{ project_name }} to ECR..."
+    # Suppose we push to some ECR. The actual repository URI might be from Terraform outputs.
+    echo "Pushing {{ project_name }} to ECR..."
 
 deploy-infra:
-	cd terraform/infrastructure && terragrunt init && terragrunt apply -auto-approve
+    cd terraform/infrastructure && terragrunt init && terragrunt apply -auto-approve
 
 deploy-app:
-	cd terraform/dev && terragrunt run-all apply -auto-approve
+    cd terraform/dev && terragrunt run-all apply -auto-approve

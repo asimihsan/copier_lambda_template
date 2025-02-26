@@ -1,2 +1,3 @@
 .jj
 .devbox
+internal/handler/*.gen.go

@@ -1,0 +1,89 @@
+package server
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+	"github.com/rs/zerolog/log"
+	"github.com/yourusername/myproject/internal/config"
+	"github.com/yourusername/myproject/internal/handler"
+)
+
+// Server represents the HTTP server
+type Server struct {
+	echo   *echo.Echo
+	config *config.Config
+}
+
+// New creates a new server
+func New(config *config.Config, handler *handler.ServerImpl) *Server {
+	e := echo.New()
+
+	// Middleware
+	e.Use(middleware.Recover())
+	e.Use(middleware.RequestID())
+	e.Use(middleware.CORS())
+	
+	// Custom logger middleware with zerolog
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			req := c.Request()
+			res := c.Response()
+			
+			start := time.Now()
+			err := next(c)
+			if err != nil {
+				c.Error(err)
+			}
+			
+			log.Info().
+				Str("request_id", c.Response().Header().Get(echo.HeaderXRequestID)).
+				Str("method", req.Method).
+				Str("uri", req.RequestURI).
+				Int("status", res.Status).
+				Int64("latency_ms", time.Since(start).Milliseconds()).
+				Msg("Request")
+				
+			return err
+		}
+	})
+
+	// Setup routes
+	api := e.Group(config.Server.BasePath)
+	handler.RegisterHandlers(api)
+
+	return &Server{
+		echo:   e,
+		config: config,
+	}
+}
+
+// Start starts the server
+func (s *Server) Start() error {
+	// Start server
+	go func() {
+		addr := fmt.Sprintf(":%d", s.config.Server.Port)
+		log.Info().Int("port", s.config.Server.Port).Msg("Starting server")
+		if err := s.echo.Start(addr); err != nil && err != http.ErrServerClosed {
+			log.Fatal().Err(err).Msg("Failed to start server")
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shut down the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	log.Info().Msg("Shutting down server")
+	return s.echo.Shutdown(ctx)
+}
