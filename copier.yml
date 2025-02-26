@@ -6,10 +6,20 @@ project_name:
   help: "What is your project name?"
   default: "example-project"
 
+project_name_hyphens:
+  type: str
+  help: "What is your project name with hyphens?"
+  default: "{{ project_name | lower | replace(' ', '-') | replace('_', '-') }}"
+
 github_path:
   type: str
   help: "What is your GitHub path?"
   default: "github.com/username/example-project"
+
+random_suffix:
+  type: str
+  help: "Random suffix to ensure unique resource names; defaults to a 8-character string"
+  default: "{% set chars = 'abcdefghijklmnopqrstuvwxyz0123456789' %}{% for i in range(8) %}{{ chars|random }}{% endfor %}"
 
 _exclude:
   - ".git"

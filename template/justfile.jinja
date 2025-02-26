@@ -36,6 +36,10 @@ push:
     # Suppose we push to some ECR. The actual repository URI might be from Terraform outputs.
     echo "Pushing {{ project_name }} to ECR..."
 
+terraform-init:
+    cd terraform/infrastructure && terragrunt init
+    cd terraform/dev && terragrunt init
+
 deploy-infra:
     cd terraform/infrastructure && terragrunt init && terragrunt apply -auto-approve
 
