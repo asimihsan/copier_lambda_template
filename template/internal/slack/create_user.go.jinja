@@ -1,0 +1,59 @@
+package slack
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"{{ github_path }}/internal/repository"
+	"github.com/rs/zerolog"
+	"github.com/slack-go/slack"
+)
+
+// Minimum number of command arguments required for creating a user (email and name)
+const MinCreateUserFields = 2
+
+type CreateUserCommand struct {
+	Repo   repository.UserRepository
+	Logger zerolog.Logger
+}
+
+func NewCreateUserCommand(repo repository.UserRepository, logger zerolog.Logger) *CreateUserCommand {
+	return &CreateUserCommand{Repo: repo, Logger: logger}
+}
+
+func (c *CreateUserCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand, args string) (slack.Msg, error) {
+	c.Logger.Info().Msg("Handling 'create' command")
+
+	fields := strings.Fields(args)
+
+	if len(fields) < MinCreateUserFields {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         "Usage: /slash create <email> <name>",
+		}, nil
+	}
+
+	email := fields[0]
+	name := strings.Join(fields[1:], " ")
+	user, err := c.Repo.CreateUser(ctx, repository.UserCreate{
+		Email: email,
+		Name:  name,
+	})
+
+	if err != nil {
+		c.Logger.Error().Err(err).Msg("Failed to create user")
+
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         "Failed to create user",
+		}, err
+	}
+
+	message := fmt.Sprintf("User created: ID: %s, Name: %s, Email: %s", user.ID, user.Name, user.Email)
+
+	return slack.Msg{
+		ResponseType: slack.ResponseTypeInChannel,
+		Text:         message,
+	}, nil
+}

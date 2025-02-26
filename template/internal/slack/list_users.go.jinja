@@ -1,0 +1,45 @@
+package slack
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/rs/zerolog"
+	"github.com/slack-go/slack"
+	"{{ github_path }}/internal/repository"
+)
+
+type ListUsersCommand struct {
+	Repo   repository.UserRepository
+	Logger zerolog.Logger
+}
+
+func NewListUsersCommand(repo repository.UserRepository, logger zerolog.Logger) *ListUsersCommand {
+	return &ListUsersCommand{Repo: repo, Logger: logger}
+}
+
+func (c *ListUsersCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand, args string) (slack.Msg, error) {
+	c.Logger.Info().Msg("Handling 'list' command")
+	users, err := c.Repo.ListUsers(ctx)
+	if err != nil {
+		c.Logger.Error().Err(err).Msg("Failed to list users")
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         "Failed to list users",
+		}, err
+	}
+	if len(users) == 0 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeInChannel,
+			Text:         "No users found.",
+		}, nil
+	}
+	message := "Users:\n"
+	for _, user := range users {
+		message += fmt.Sprintf("- %s: %s <%s>\n", user.ID, user.Name, user.Email)
+	}
+	return slack.Msg{
+		ResponseType: slack.ResponseTypeInChannel,
+		Text:         message,
+	}, nil
+}

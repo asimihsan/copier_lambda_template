@@ -2,13 +2,15 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
+	"time"
 
 	"{{ github_path }}/internal/config"
 	"{{ github_path }}/internal/handler"
 	"{{ github_path }}/internal/repository"
-	"{{ github_path }}/internal/server"
 	"{{ github_path }}/pkg/logger"
+	"{{ github_path }}/pkg/middleware"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 )
@@ -16,7 +18,7 @@ import (
 func main() {
 	app := &cli.App{
 		Name:  "rotateorama",
-		Usage: "A user management service with DynamoDB backend",
+		Usage: "A user management service with DynamoDB backend and Slack integration",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "local",
@@ -61,6 +63,16 @@ func main() {
 				Value:   "info",
 				EnvVars: []string{"LOG_LEVEL"},
 			},
+			&cli.StringFlag{
+				Name:    "slack-signing-secret",
+				Usage:   "Slack signing secret for request verification",
+				EnvVars: []string{"SLACK_SIGNING_SECRET"},
+			},
+			&cli.StringFlag{
+				Name:    "slack-bot-token",
+				Usage:   "Slack bot token for API calls",
+				EnvVars: []string{"SLACK_BOT_TOKEN"},
+			},
 		},
 		Action: run,
 	}
@@ -86,6 +98,10 @@ func run(c *cli.Context) error {
 			IsLocal:           c.Bool("local"),
 		},
 		LogLevel: c.String("log-level"),
+		Slack: config.SlackConfig{
+			SigningSecret: c.String("slack-signing-secret"),
+			BotToken:      c.String("slack-bot-token"),
+		},
 	}
 
 	// Clear endpoint if not in local mode
@@ -109,16 +125,26 @@ func run(c *cli.Context) error {
 		cfg.Database.DynamoDBTableName,
 		cfg.Database.IsLocal,
 	)
-
 	if err != nil {
 		return fmt.Errorf("failed to create repository: %w", err)
 	}
 
-	// Create handler
-	h := handler.NewServer(repo)
+	// Create the Slack handler, passing repository and Slack config
+	slackHandler := handler.NewSlackHandler(repo, cfg.Slack)
 
-	// Create and start server
-	srv := server.New(cfg, h)
+	// Inject the Slack signing secret and global logger into the middleware
+	verificationMw := middleware.NewSlackVerificationMiddleware(cfg.Slack.SigningSecret, log.Logger)
+	http.Handle("/slash", middleware.LoggingMiddleware(verificationMw(slackHandler)))
 
-	return srv.Start()
+	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	log.Info().Msgf("Slack bot server listening on %s", addr)
+
+	server := &http.Server{
+		Addr:         addr,
+		Handler:      nil, // Use default router
+		ReadTimeout:  15 * time.Second, //nolint:mnd
+		WriteTimeout: 15 * time.Second, //nolint:mnd
+		IdleTimeout:  60 * time.Second, //nolint:mnd
+	}
+	return server.ListenAndServe()
 }

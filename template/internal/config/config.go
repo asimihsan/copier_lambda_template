@@ -8,11 +8,18 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Config holds all configuration for the application
+// SlackConfig holds configuration for Slack integration.
+type SlackConfig struct {
+	SigningSecret string
+	BotToken      string
+}
+
+// Config holds all configuration for the application, including Slack settings.
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	LogLevel string
+	Slack    SlackConfig
 }
 
 // ServerConfig holds configuration for the server
@@ -49,6 +56,10 @@ func LoadConfig() (*Config, error) {
 			IsLocal:           getEnvAsBool("APP_LOCAL_MODE", false),
 		},
 		LogLevel: getEnv("LOG_LEVEL", "info"),
+		Slack: SlackConfig{
+			SigningSecret: getEnv("SLACK_SIGNING_SECRET", ""),
+			BotToken:      getEnv("SLACK_BOT_TOKEN", ""),
+		},
 	}, nil
 }
 

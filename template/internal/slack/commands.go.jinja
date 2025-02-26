@@ -1,0 +1,56 @@
+package slack
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/rs/zerolog"
+	"github.com/slack-go/slack"
+)
+
+// SlackCommandHandler defines an interface for handling a Slack command.
+type SlackCommandHandler interface {
+	HandleCommand(ctx context.Context, cmd slack.SlashCommand, args string) (slack.Msg, error)
+}
+
+// Registry holds mappings from command keywords to their handlers.
+type Registry struct {
+	handlers map[string]SlackCommandHandler
+	logger   zerolog.Logger
+}
+
+// NewRegistry creates a new command registry.
+func NewRegistry(logger zerolog.Logger) *Registry {
+	return &Registry{handlers: make(map[string]SlackCommandHandler), logger: logger}
+}
+
+// Register adds a new handler for the given command keyword.
+func (r *Registry) Register(cmd string, handler SlackCommandHandler) {
+	r.handlers[cmd] = handler
+}
+
+// Dispatch parses the command text and finds the appropriate handler.
+func (r *Registry) Dispatch(ctx context.Context, cmd slack.SlashCommand) (slack.Msg, error) {
+	text := strings.TrimSpace(cmd.Text)
+	var keyword, args string
+	fields := strings.Fields(text)
+	if len(fields) == 0 {
+		keyword = "list"
+	} else {
+		keyword = strings.ToLower(fields[0])
+		if len(fields) > 1 {
+			args = strings.Join(fields[1:], " ")
+		}
+	}
+	handler, ok := r.handlers[keyword]
+	if !ok {
+		r.logger.Warn().Msgf("Unknown command: %s", keyword)
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         fmt.Sprintf("Unknown command '%s'. Use one of: list, get, create, update, delete.", keyword),
+		}, nil
+	}
+	r.logger.Info().Msgf("Dispatching command '%s' with args: %s", keyword, args)
+	return handler.HandleCommand(ctx, cmd, args)
+}
