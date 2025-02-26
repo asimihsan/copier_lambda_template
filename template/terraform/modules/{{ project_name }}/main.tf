@@ -2,10 +2,6 @@ terraform {
   backend "s3" {}
 }
 
-variable "project_prefix" {
-  type = string
-}
-
 provider "aws" {
   region = "us-west-2"
 }

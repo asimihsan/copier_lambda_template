@@ -4,6 +4,10 @@ include {
 
 dependency "infra" {
   config_path = "../../infrastructure"
+
+  mock_outputs = {
+    infra_output = "mock-infra-output"
+  }
 }
 
 terraform {
@@ -11,5 +15,5 @@ terraform {
 }
 
 inputs = {
-  project_prefix = "{{ project_name }}-dev-{{ random_suffix }}"
+  project_prefix = "{{ project_name_hyphens }}-dev-{{ random_suffix }}"
 }

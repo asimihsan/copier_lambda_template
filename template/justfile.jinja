@@ -37,8 +37,10 @@ push:
     echo "Pushing {{ project_name }} to ECR..."
 
 terraform-init:
-    cd terraform/infrastructure && terragrunt init
-    cd terraform/dev && terragrunt init
+    cd terraform && terragrunt run-all init --tf-forward-stdout
+
+terraform-plan:
+    cd terraform && terragrunt run-all plan --tf-forward-stdout
 
 deploy-infra:
     cd terraform/infrastructure && terragrunt init && terragrunt apply -auto-approve

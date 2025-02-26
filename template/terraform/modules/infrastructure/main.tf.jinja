@@ -1,0 +1,16 @@
+terraform {
+  backend "s3" {}
+}
+
+provider "aws" {
+  region = var.region
+}
+
+resource "aws_ecr_repository" "{{ project_name }}" {
+  name                 = "${var.project_prefix}"
+  image_tag_mutability = "IMMUTABLE"
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+  force_delete = false
+}
