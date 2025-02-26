@@ -1,0 +1,66 @@
+package slack
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/slack-go/slack"
+)
+
+// OverrideCommand handles override-related commands (e.g. "request", "approve")
+type OverrideCommand struct {
+	// In future, you can inject an OverrideRepository here.
+}
+
+func NewOverrideCommand() *OverrideCommand {
+	return &OverrideCommand{}
+}
+
+func (c *OverrideCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand, args string) (slack.Msg, error) {
+	args = strings.TrimSpace(args)
+	fields := strings.Fields(args)
+	if len(fields) == 0 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         "Usage: /override <request|approve> [parameters]",
+		}, nil
+	}
+
+	switch sub := strings.ToLower(fields[0]); sub {
+	case "request":
+		// Expect: /override request [start_date] [end_date]
+		if len(fields) < 3 { //nolint:mnd
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         "Usage: /override request <start_date> <end_date>",
+			}, nil
+		}
+		startDate := fields[1]
+		endDate := fields[2]
+		// Stub response; later connect to DynamoDB override creation.
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeInChannel,
+			Text:         fmt.Sprintf("Override request submitted for %s through %s.", startDate, endDate),
+		}, nil
+	case "approve":
+		// Expect: /override approve <override_id>
+		if len(fields) < 2 { //nolint:mnd
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         "Usage: /override approve <override_id>",
+			}, nil
+		}
+		overrideID := fields[1]
+		// Stub response; later connect to the approval workflow.
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeInChannel,
+			Text:         fmt.Sprintf("Override %s approved.", overrideID),
+		}, nil
+	default:
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         "Invalid override command. Use `request` or `approve`.",
+		}, nil
+	}
+}

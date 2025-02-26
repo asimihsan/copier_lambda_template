@@ -23,6 +23,14 @@ lint:
 test:
     mise x go -- go test ./... -v
 
+rotation-test:
+    echo "Testing rotation functions..."
+    # Add commands to run rotation repository/handler tests
+
+override-test:
+    echo "Testing override functions..."
+    # Add commands to run override repository/handler tests
+
 build:
     mise x go -- go build -o bin/server cmd/server/main.go
 
@@ -42,8 +50,5 @@ terraform-init:
 terraform-plan:
     cd terraform && terragrunt run-all plan --tf-forward-stdout
 
-deploy-infra:
-    cd terraform/infrastructure && terragrunt init && terragrunt apply -auto-approve
-
-deploy-app:
-    cd terraform/dev && terragrunt run-all apply -auto-approve
+terraform-apply:
+    cd terraform && terragrunt run-all apply --tf-forward-stdout

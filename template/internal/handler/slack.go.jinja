@@ -19,11 +19,8 @@ func NewSlackHandler(repo repository.UserRepository, slackConfig config.SlackCon
 	logger := log.Logger
 
 	registry := slackcmd.NewRegistry(logger)
-	registry.Register("list", slackcmd.NewListUsersCommand(repo, logger))
-	registry.Register("get", slackcmd.NewGetUserCommand(repo, logger))
-	registry.Register("create", slackcmd.NewCreateUserCommand(repo, logger))
-	registry.Register("update", slackcmd.NewUpdateUserCommand(repo, logger))
-	registry.Register("delete", slackcmd.NewDeleteUserCommand(repo, logger))
+	registry.Register("rotation", slackcmd.NewRotationCommand())
+	registry.Register("override", slackcmd.NewOverrideCommand())
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()

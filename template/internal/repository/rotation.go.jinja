@@ -1,0 +1,23 @@
+package repository
+
+import (
+	"context"
+	"time"
+)
+
+type Rotation struct {
+	RotationID       string    `json:"rotation_id"`
+	Frequency        string    `json:"frequency"`
+	CurrentOwner     string    `json:"current_owner"`
+	RotationOrder    []string  `json:"rotation_order"`
+	LastRotationDate time.Time `json:"last_rotation_date"`
+	NextRotationDate time.Time `json:"next_rotation_date"`
+}
+
+type RotationRepository interface {
+	GetRotation(ctx context.Context) (*Rotation, error)
+	AdvanceRotation(ctx context.Context) error
+	// Add additional methods as needed.
+}
+
+// Stub implementation – implement using DynamoDB similar to your UserRepository.
