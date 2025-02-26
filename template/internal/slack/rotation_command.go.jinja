@@ -5,15 +5,19 @@ import (
 	"strings"
 
 	"github.com/slack-go/slack"
+
+	"{{ github_path }}/internal/repository"
 )
 
 // RotationCommand handles rotation-related commands (e.g. "show", "next")
 type RotationCommand struct {
-	// In future, you can inject a RotationRepository here.
+	repo repository.RotationRepository
 }
 
-func NewRotationCommand() *RotationCommand {
-	return &RotationCommand{}
+func NewRotationCommand(repo repository.RotationRepository) *RotationCommand {
+	return &RotationCommand{
+		repo: repo,
+	}
 }
 
 func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand, args string) (slack.Msg, error) {

@@ -15,14 +15,11 @@ import (
 
 // NewSlackHandler returns an http.Handler that processes Slack slash commands.
 // It initializes a command registry with all commands and uses it to dispatch.
-func NewSlackHandler(repo repository.UserRepository, slackConfig config.SlackConfig) http.Handler {
+func NewSlackHandler(overrideRepo repository.OverrideRepository, rotationRepo repository.RotationRepository, slackConfig config.SlackConfig) http.Handler {
 	logger := log.Logger
 
-	// Create a DynamoDB client for the override repository
-	overrideRepo := repository.NewDynamoDBOverrideRepository(repo.(*repository.DynamoDBRepository).Client, slackConfig.OverrideTableName)
-	
 	registry := slackcmd.NewRegistry(logger)
-	registry.Register("rotation", slackcmd.NewRotationCommand())
+	registry.Register("rotation", slackcmd.NewRotationCommand(rotationRepo))
 	registry.Register("override", slackcmd.NewOverrideCommand(overrideRepo))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

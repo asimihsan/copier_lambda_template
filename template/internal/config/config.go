@@ -10,9 +10,10 @@ import (
 
 // SlackConfig holds configuration for Slack integration.
 type SlackConfig struct {
-	SigningSecret    string
-	BotToken         string
+	SigningSecret     string
+	BotToken          string
 	OverrideTableName string
+	RotationTableName string
 }
 
 // Config holds all configuration for the application, including Slack settings.
@@ -58,8 +59,10 @@ func LoadConfig() (*Config, error) {
 		},
 		LogLevel: getEnv("LOG_LEVEL", "info"),
 		Slack: SlackConfig{
-			SigningSecret: getEnv("SLACK_SIGNING_SECRET", ""),
-			BotToken:      getEnv("SLACK_BOT_TOKEN", ""),
+			SigningSecret:     getEnv("SLACK_SIGNING_SECRET", ""),
+			BotToken:          getEnv("SLACK_BOT_TOKEN", ""),
+			OverrideTableName: getEnv("OVERRIDE_TABLE_NAME", "overrides"),
+			RotationTableName: getEnv("ROTATION_TABLE_NAME", "rotations"),
 		},
 	}, nil
 }

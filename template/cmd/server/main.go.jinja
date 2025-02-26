@@ -118,19 +118,22 @@ func run(c *cli.Context) error {
 		Int("port", cfg.Server.Port).
 		Msg("Starting application")
 
-	// Create repository
-	repo, err := repository.NewDynamoDBRepository(
+	// Create a DynamoDB client (no more UserRepository)
+	dynamoClient, err := repository.NewDynamoDBClient(
 		cfg.Database.DynamoDBEndpoint,
 		cfg.Database.DynamoDBRegion,
-		cfg.Database.DynamoDBTableName,
 		cfg.Database.IsLocal,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create repository: %w", err)
+		return fmt.Errorf("failed to create DynamoDB client: %w", err)
 	}
 
-	// Create the Slack handler, passing repository and Slack config
-	slackHandler := handler.NewSlackHandler(repo, cfg.Slack)
+	// Build our specific repositories
+	overrideRepo := repository.NewDynamoDBOverrideRepository(dynamoClient, cfg.Slack.OverrideTableName)
+	rotationRepo := repository.NewDynamoDBRotationRepository(dynamoClient, cfg.Slack.RotationTableName)
+
+	// Create the Slack handler with the new repositories and Slack config
+	slackHandler := handler.NewSlackHandler(overrideRepo, rotationRepo, cfg.Slack)
 
 	// Inject the Slack signing secret and global logger into the middleware
 	verificationMw := middleware.NewSlackVerificationMiddleware(cfg.Slack.SigningSecret, log.Logger)
