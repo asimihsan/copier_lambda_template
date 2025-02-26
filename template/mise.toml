@@ -1,7 +1,6 @@
 [tools]
 go = "prefix:1.24"
 golangci-lint = "latest"
-node = "lts"
 oapi-codegen = "latest"
 
 [settings]

@@ -4,7 +4,8 @@ FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS build
 
 RUN dnf update -y && \
     dnf groupinstall -y "Development Tools" && \
-    dnf install -y gcc g++ tar curl-minimal git
+    dnf install -y \
+        gcc g++ tar curl-minimal git gnupg
 
 # Install mise with proper caching and PATH setup
 ENV MISE_CACHE_DIR=/var/cache/mise
