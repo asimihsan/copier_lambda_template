@@ -6,17 +6,23 @@ provider "aws" {
   region = "us-west-2"
 }
 
+data "external" "deploy_hash" {
+  program = ["bash", "${path.module}/../../scripts/compute_deploy_hash.sh"]
+  query   = {}  // Ignore any incoming query
+}
+
 resource "null_resource" "sam_deploy" {
   provisioner "local-exec" {
-    command = "mise x aws-sam -- sam deploy --template-file ${var.sam_template} --stack-name ${var.stack_name} --capabilities CAPABILITY_IAM --parameter-overrides EcrRepoUrl=${var.ecr_repo_url} LambdaRole=${aws_iam_role.lambda_exec_role.arn}"
+    working_dir = "${path.module}/../.."
+    command = "just sam-deploy"
   }
   
   # Add more comprehensive triggers to ensure redeployment when needed
   triggers = {
     ecr_repo_url = var.ecr_repo_url
     stack_name   = var.stack_name
-    template_hash = filemd5(var.sam_template)
-    role_arn = aws_iam_role.lambda_exec_role.arn
+    deploy_hash  = data.external.deploy_hash.result.hash
+    role_arn = var.lambda_role_arn
   }
 }
 

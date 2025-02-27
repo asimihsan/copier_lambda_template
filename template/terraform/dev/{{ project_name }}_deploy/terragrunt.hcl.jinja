@@ -1,4 +1,4 @@
-{# include {
+include {
   path = find_in_parent_folders("root.hcl")
 }
 
@@ -26,7 +26,8 @@ inputs = {
   project_prefix = "{{ project_name_hyphens }}-dev-{{ random_suffix }}"
   region         = "us-west-2"
 
-  sam_template   = "sam/template.yaml"
+  sam_template   = "${get_terragrunt_dir()}/../../../sam/template.yaml"
   stack_name     = "{{ project_name }}-lambda"
   ecr_repo_url   = dependency.infra.outputs.repository_url
-} #}
+  lambda_role_arn = dependency.{{ project_name }}_pre.outputs.lambda_exec_role
+}
