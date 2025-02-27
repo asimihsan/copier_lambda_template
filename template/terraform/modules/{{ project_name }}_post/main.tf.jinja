@@ -7,7 +7,8 @@ provider "aws" {
 }
 
 resource "aws_lambda_function_url" "lambda_url" {
-  function_name     = var.lambda_function_name
+  function_name      = var.lambda_function_name
+  qualifier          = "live"
   authorization_type = "NONE"
 }
 
