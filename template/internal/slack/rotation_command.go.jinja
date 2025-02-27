@@ -1,8 +1,10 @@
 package slack
-
+ 
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,148 +35,346 @@ func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 	if len(fields) == 0 {
 		return slack.Msg{
 			ResponseType: slack.ResponseTypeEphemeral,
-			Text:         "Usage: /rotation <create|show|next> [parameters]",
+			Text:         "Usage: /rotation <create|show|next|add|remove|move|reorder|setfrequency|setowner> [parameters]",
 		}, nil
 	}
 
 	switch strings.ToLower(fields[0]) {
 	case "create":
-		// Expected syntax: /rotation create <label> <frequency> [user_ids...]
-		if len(fields) < 3 { //nolint:mnd
+		if len(fields) < 3 {
 			return slack.Msg{
 				ResponseType: slack.ResponseTypeEphemeral,
 				Text:         "Usage: /rotation create <label> <frequency> [user_ids...]",
 			}, nil
 		}
 
-		label := fields[1]
-		frequency := fields[2]
-
-		var rotationOrder []string
-		if len(fields) > 3 { //nolint:mnd
-			rotationOrder = fields[3:]
-		} else {
-			rotationOrder = []string{cmd.UserID} // default to creator only
-		}
-
-		// Retrieve creator's Slack info.
-		user, err := c.slackClient.GetUserInfo(cmd.UserID)
-		if err != nil {
-			return slack.Msg{}, fmt.Errorf("failed to fetch creator info: %w", err)
-		}
-
-		// Build the new rotation record.
-		newRotation := repository.Rotation{
-			CreatorTeamID:    cmd.TeamID,
-			RotationLabel:    label,
-			Frequency:        frequency,
-			CurrentOwner:     cmd.UserID,
-			RotationOrder:    rotationOrder,
-			LastRotationDate: time.Now(),
-			NextRotationDate: calculateNextRotationDate(time.Now(), frequency),
-			CreatorUserID:    cmd.UserID,
-			CreatorUserName:  user.Name,
-		}
-
-		if err := c.repo.CreateRotation(ctx, newRotation); err != nil {
-			return slack.Msg{}, fmt.Errorf("failed to create rotation: %w", err)
-		}
-
-		return slack.Msg{
-			ResponseType: slack.ResponseTypeInChannel,
-			Text:         fmt.Sprintf("Rotation `%s` created with frequency %s and owner <@%s>.", label, frequency, cmd.UserID),
-		}, nil
+		return c.createRotation(ctx, cmd, fields[1], fields[2], fields[3:])
 
 	case "show":
-		// Expected syntax: /rotation show <label>
-		if len(fields) < 2 { //nolint:mnd
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Text:         "Usage: /rotation show <label>",
-			}, nil
+		if len(fields) < 2 {
+			return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Usage: /rotation show <label>"}, nil
 		}
 
-		label := fields[1]
-		rotation, err := c.repo.GetRotation(ctx, cmd.TeamID, label)
-		if err != nil {
-			return slack.Msg{}, fmt.Errorf("failed to retrieve rotation: %w", err)
-		}
-		if rotation == nil {
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Text:         fmt.Sprintf("Rotation `%s` not found.", label),
-			}, nil
-		}
-
-		// Format a response showing the current and next owners.
-		responseText := fmt.Sprintf("Rotation `%s`:\n• Current owner: <@%s>\n• Next in line: <@%s>",
-			label, rotation.CurrentOwner, nextOwner(rotation))
-		return slack.Msg{
-			ResponseType: slack.ResponseTypeInChannel,
-			Text:         responseText,
-		}, nil
+		return c.showRotation(ctx, cmd.TeamID, fields[1])
 
 	case "next":
-		// Expected syntax: /rotation next <label>
-		if len(fields) < 2 { //nolint:mnd
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Text:         "Usage: /rotation next <label>",
-			}, nil
+		if len(fields) < 2 {
+			return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Usage: /rotation next <label>"}, nil
 		}
-		label := fields[1]
-		rotation, err := c.repo.GetRotation(ctx, cmd.TeamID, label)
-		if err != nil {
-			return slack.Msg{}, fmt.Errorf("failed to retrieve rotation: %w", err)
+
+		return c.nextRotation(ctx, cmd.TeamID, fields[1])
+
+	case "add":
+		if len(fields) < 3 {
+			return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Usage: /rotation add <label> <@user...>"}, nil
 		}
-		if rotation == nil {
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Text:         fmt.Sprintf("Rotation `%s` not found.", label),
-			}, nil
+
+		return c.modifyRotationMembers(ctx, cmd.TeamID, fields[1], fields[2:], "add")
+
+	case "remove":
+		if len(fields) < 3 {
+			return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Usage: /rotation remove <label> <@user...>"}, nil
 		}
-		return slack.Msg{
-			ResponseType: slack.ResponseTypeInChannel,
-			Text:         fmt.Sprintf("Next deployment owner for `%s` is <@%s>.", label, nextOwner(rotation)),
-		}, nil
+
+		return c.modifyRotationMembers(ctx, cmd.TeamID, fields[1], fields[2:], "remove")
+
+	case "move":
+		if len(fields) != 4 {
+			return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Usage: /rotation move <label> <@user> <position>"}, nil
+		}
+
+		return c.moveRotationMember(ctx, cmd.TeamID, fields[1], fields[2], fields[3])
+
+	case "reorder":
+		if len(fields) < 3 {
+			return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Usage: /rotation reorder <label> <@user...>"}, nil
+		}
+
+		return c.reorderRotation(ctx, cmd.TeamID, fields[1], fields[2:])
+
+	case "setfrequency":
+		if len(fields) != 3 {
+			return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Usage: /rotation setfrequency <label> <frequency>"}, nil
+		}
+
+		return c.setFrequency(ctx, cmd.TeamID, fields[1], fields[2])
+
+	case "setowner":
+		if len(fields) != 3 {
+			return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Usage: /rotation setowner <label> <@user>"}, nil
+		}
+
+		return c.setOwner(ctx, cmd.TeamID, fields[1], fields[2])
 
 	default:
-		return slack.Msg{
-			ResponseType: slack.ResponseTypeEphemeral,
-			Text:         "Invalid rotation command. Use `/rotation create`, `/rotation show` or `/rotation next`.",
-		}, nil
+		return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Invalid rotation command."}, nil
 	}
 }
 
-// calculateNextRotationDate is similar to the helper in the repository.
+// Implementations of helper functions:
+
+func (c *RotationCommand) createRotation(ctx context.Context, cmd slack.SlashCommand, label, frequency string, users []string) (slack.Msg, error) {
+	user, err := c.slackClient.GetUserInfo(cmd.UserID)
+	if err != nil {
+		return slack.Msg{}, err
+	}
+
+	if len(users) == 0 {
+		users = []string{cmd.UserID}
+	}
+
+	rotation := repository.Rotation{
+		CreatorTeamID:    cmd.TeamID,
+		RotationLabel:    label,
+		Frequency:        frequency,
+		CurrentOwner:     users[0],
+		RotationOrder:    users,
+		LastRotationDate: time.Now(),
+		NextRotationDate: calculateNextRotationDate(time.Now(), frequency),
+		CreatorUserID:    cmd.UserID,
+		CreatorUserName:  user.Name,
+	}
+
+	if err := c.repo.UpsertRotation(ctx, rotation); err != nil {
+		return slack.Msg{}, err
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: fmt.Sprintf("Rotation `%s` created.", label)}, nil
+}
+
+func (c *RotationCommand) showRotation(ctx context.Context, teamID, label string) (slack.Msg, error) {
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
+		Text: fmt.Sprintf("Rotation `%s`: current owner <@%s>, next <@%s>", label, r.CurrentOwner, nextOwner(r))}, nil
+}
+
+func (c *RotationCommand) nextRotation(ctx context.Context, teamID, label string) (slack.Msg, error) {
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
+		Text: fmt.Sprintf("Next owner for `%s` is <@%s>.", label, nextOwner(r))}, nil
+}
+
+func (c *RotationCommand) modifyRotationMembers(ctx context.Context, teamID, label string, userMentions []string, action string) (slack.Msg, error) {
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	if action == "add" {
+		for _, u := range userMentions {
+			userID, err := extractUserIDFromMention(u)
+			if err != nil {
+				return slack.Msg{ //nolint:nilerr
+					ResponseType: slack.ResponseTypeEphemeral,
+					Text:         fmt.Sprintf("Invalid user mention: %s", u),
+				}, nil
+			}
+
+			if !contains(r.RotationOrder, userID) {
+				r.RotationOrder = append(r.RotationOrder, userID)
+			}
+		}
+	} else {
+		filtered := []string{}
+
+		for _, member := range r.RotationOrder {
+			if !contains(userMentions, member) {
+				filtered = append(filtered, member)
+			}
+		}
+
+		r.RotationOrder = filtered
+	}
+
+	if err := c.repo.UpsertRotation(ctx, *r); err != nil {
+		return slack.Msg{}, err
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
+		Text: fmt.Sprintf("Rotation `%s` members updated.", label)}, nil
+}
+
+func (c *RotationCommand) moveRotationMember(ctx context.Context, teamID, label, user, posStr string) (slack.Msg, error) {
+	userID, err := extractUserIDFromMention(user)
+	if err != nil {
+		return slack.Msg{ //nolint:nilerr
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         fmt.Sprintf("Invalid user mention: %s", user),
+		}, nil
+	}
+	user = userID
+
+	pos, err := strconv.Atoi(posStr)
+	if err != nil {
+		return slack.Msg{}, err
+	}
+
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	r.RotationOrder = remove(r.RotationOrder, user)
+	if pos > len(r.RotationOrder) {
+		pos = len(r.RotationOrder)
+	}
+
+	r.RotationOrder = append(r.RotationOrder[:pos], append([]string{user}, r.RotationOrder[pos:]...)...)
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: fmt.Sprintf("Moved <@%s> in rotation `%s`.", user, label)}, c.repo.UpsertRotation(ctx, *r)
+}
+
+// reorderRotation reorders the rotation members based on the provided user list.
+func (c *RotationCommand) reorderRotation(ctx context.Context, teamID, label string, users []string) (slack.Msg, error) {
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	if len(users) != len(r.RotationOrder) {
+		return slack.Msg{}, fmt.Errorf("provided user list must include all current rotation members")
+	}
+
+	for _, user := range users {
+		if !contains(r.RotationOrder, user) {
+			return slack.Msg{}, fmt.Errorf("user %s is not in the current rotation", user)
+		}
+	}
+
+	r.RotationOrder = users
+	// Ensure current owner remains valid.
+	if !contains(users, r.CurrentOwner) {
+		r.CurrentOwner = users[0]
+	}
+
+	if err := c.repo.UpsertRotation(ctx, *r); err != nil {
+		return slack.Msg{}, err
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
+		Text: fmt.Sprintf("Rotation `%s` reordered.", label)}, nil
+}
+
+// setFrequency sets a new frequency for the rotation and recalculates the next rotation date.
+func (c *RotationCommand) setFrequency(ctx context.Context, teamID, label, frequency string) (slack.Msg, error) {
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	r.Frequency = frequency
+	r.NextRotationDate = calculateNextRotationDate(r.LastRotationDate, frequency)
+
+	if err := c.repo.UpsertRotation(ctx, *r); err != nil {
+		return slack.Msg{}, err
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
+		Text: fmt.Sprintf("Frequency for rotation `%s` set to `%s`.", label, frequency)}, nil
+}
+
+// setOwner sets the current owner of the rotation.
+func (c *RotationCommand) setOwner(ctx context.Context, teamID, label, userMention string) (slack.Msg, error) {
+	// Extract the user ID from the mention
+	userID, err := extractUserIDFromMention(userMention)
+	if err != nil {
+		return slack.Msg{ //nolint:nilerr
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         fmt.Sprintf("Invalid user mention: %s", userMention),
+		}, nil
+	}
+
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	if !contains(r.RotationOrder, userID) {
+		return slack.Msg{}, fmt.Errorf("User <@%s> is not a member of rotation `%s`", userID, label)
+	}
+
+	r.CurrentOwner = userID
+	r.NextRotationDate = calculateNextRotationDate(r.LastRotationDate, r.Frequency)
+
+	if err := c.repo.UpsertRotation(ctx, *r); err != nil {
+		return slack.Msg{}, err
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
+		Text: fmt.Sprintf("Current owner for rotation `%s` set to <@%s>.", label, userID)}, nil
+}
+
+// Helper functions
+func contains(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+
+	return false
+}
+
+func remove(slice []string, s string) []string {
+	filtered := []string{}
+
+	for _, item := range slice {
+		if item != s {
+			filtered = append(filtered, item)
+		}
+	}
+
+	return filtered
+}
+
 func calculateNextRotationDate(lastDate time.Time, frequency string) time.Time {
 	switch frequency {
 	case "daily":
-		return lastDate.AddDate(0, 0, 1) //nolint:mnd
+		return lastDate.AddDate(0, 0, 1)
+
 	case "weekly":
-		return lastDate.AddDate(0, 0, 7) //nolint:mnd
+		return lastDate.AddDate(0, 0, 7)
+
 	case "biweekly":
-		return lastDate.AddDate(0, 0, 14) //nolint:mnd
+		return lastDate.AddDate(0, 0, 14)
+
 	case "monthly":
-		return lastDate.AddDate(0, 1, 0) //nolint:mnd
+		return lastDate.AddDate(0, 1, 0)
+
 	default:
-		return lastDate.AddDate(0, 0, 7) //nolint:mnd
+		return lastDate.AddDate(0, 0, 7)
 	}
 }
 
-// nextOwner returns the next owner in the rotation.
 func nextOwner(r *repository.Rotation) string {
-	currentIndex := -1
 	for i, owner := range r.RotationOrder {
 		if owner == r.CurrentOwner {
-			currentIndex = i
-			break
+			return r.RotationOrder[(i+1)%len(r.RotationOrder)]
 		}
 	}
-	if currentIndex == -1 {
-		// if not found, return the first user
-		return r.RotationOrder[0]
+
+	return r.RotationOrder[0]
+}
+
+// extractUserIDFromMention parses the Slack mention format and returns the user ID.
+func extractUserIDFromMention(mention string) (string, error) {
+	// Regular expression to match both <@USER_ID|username> and <@USER_ID> patterns
+	re := regexp.MustCompile(`<@([UW][A-Z0-9]{8,})(?:\|[^>]+)?>`)
+
+	match := re.FindStringSubmatch(mention)
+
+	if len(match) != 2 {
+		return "", fmt.Errorf("invalid mention format: %s", mention)
 	}
-	nextIndex := (currentIndex + 1) % len(r.RotationOrder)
-	return r.RotationOrder[nextIndex]
+
+	return match[1], nil
 }

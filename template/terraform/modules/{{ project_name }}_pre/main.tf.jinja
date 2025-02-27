@@ -21,6 +21,10 @@ resource "aws_dynamodb_table" "deployment_rotation" {
     name = "rotation_label"
     type = "S"
   }
+
+  point_in_time_recovery {
+    enabled = true
+  }
 }
 
 resource "aws_dynamodb_table" "override_requests" {
@@ -31,6 +35,10 @@ resource "aws_dynamodb_table" "override_requests" {
   attribute {
     name = "override_id"
     type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true
   }
 }
 

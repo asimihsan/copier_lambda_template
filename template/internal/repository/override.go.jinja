@@ -14,14 +14,14 @@ const (
 )
 
 type Override struct {
-	OverrideID  string         `json:"override_id"`
-	RequestedBy string         `json:"requested_by"`
-	StartDate   time.Time      `json:"start_date"`
-	EndDate     time.Time      `json:"end_date"`
-	Status      OverrideStatus `json:"status"`
-	ApprovedBy  string         `json:"approved_by,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	OverrideID  string         `dynamodbav:"override_id" json:"override_id"`
+	RequestedBy string         `dynamodbav:"requested_by" json:"requested_by"`
+	StartDate   time.Time      `dynamodbav:"start_date" json:"start_date"`
+	EndDate     time.Time      `dynamodbav:"end_date" json:"end_date"`
+	Status      OverrideStatus `dynamodbav:"status" json:"status"`
+	ApprovedBy  string         `dynamodbav:"approved_by,omitempty" json:"approved_by,omitempty"`
+	CreatedAt   time.Time      `dynamodbav:"created_at" json:"created_at"`
+	UpdatedAt   time.Time      `dynamodbav:"updated_at" json:"updated_at"`
 }
 
 type OverrideRepository interface {

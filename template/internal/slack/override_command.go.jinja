@@ -39,6 +39,7 @@ func (c *OverrideCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 	switch sub := strings.ToLower(fields[0]); sub {
 	case "list":
 		overrides, err := c.repo.ListOverrides(ctx)
+
 		if err != nil {
 			return slack.Msg{}, fmt.Errorf("failed to list overrides: %w", err)
 		}
@@ -80,6 +81,7 @@ func (c *OverrideCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 		}
 
 		startDate, err := time.Parse("2006-01-02", fields[1])
+
 		if err != nil {
 			return slack.Msg{
 				ResponseType: slack.ResponseTypeEphemeral,
@@ -88,6 +90,7 @@ func (c *OverrideCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 		}
 
 		endDate, err := time.Parse("2006-01-02", fields[2])
+
 		if err != nil {
 			return slack.Msg{
 				ResponseType: slack.ResponseTypeEphemeral,
@@ -96,6 +99,7 @@ func (c *OverrideCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 		}
 
 		override, err := c.repo.CreateOverride(ctx, cmd.UserID, startDate, endDate)
+
 		if err != nil {
 			return slack.Msg{}, fmt.Errorf("failed to create override: %w", err)
 		}
@@ -118,6 +122,7 @@ func (c *OverrideCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 
 		// First check if the override exists
 		override, err := c.repo.GetOverride(ctx, overrideID)
+
 		if err != nil {
 			return slack.Msg{}, fmt.Errorf("failed to get override: %w", err)
 		}
@@ -158,6 +163,7 @@ func (c *OverrideCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 
 		// First check if the override exists
 		override, err := c.repo.GetOverride(ctx, overrideID)
+
 		if err != nil {
 			return slack.Msg{}, fmt.Errorf("failed to get override: %w", err)
 		}

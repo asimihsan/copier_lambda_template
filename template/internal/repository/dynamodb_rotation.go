@@ -38,6 +38,7 @@ func (r *DynamoDBRotationRepository) GetRotation(ctx context.Context, teamID, ro
 	}
 
 	result, err := r.client.GetItem(ctx, input)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rotation: %w", err)
 	}
@@ -57,6 +58,7 @@ func (r *DynamoDBRotationRepository) GetRotation(ctx context.Context, teamID, ro
 // AdvanceRotation moves to the next person in the rotation.
 func (r *DynamoDBRotationRepository) AdvanceRotation(ctx context.Context, teamID, rotationLabel string) error {
 	rotation, err := r.GetRotation(ctx, teamID, rotationLabel)
+
 	if err != nil {
 		return err
 	}
@@ -67,6 +69,7 @@ func (r *DynamoDBRotationRepository) AdvanceRotation(ctx context.Context, teamID
 
 	// Find the current owner in the rotation order.
 	currentIndex := -1
+
 	for i, owner := range rotation.RotationOrder {
 		if owner == rotation.CurrentOwner {
 			currentIndex = i
@@ -77,17 +80,20 @@ func (r *DynamoDBRotationRepository) AdvanceRotation(ctx context.Context, teamID
 	if currentIndex == -1 {
 		log.Warn().Str("currentOwner", rotation.CurrentOwner).
 			Msg("Current owner not found in rotation order, resetting to first person")
+
 		currentIndex = 0
 	}
 
 	// Advance to the next person.
 	nextIndex := (currentIndex + 1) % len(rotation.RotationOrder)
+
 	rotation.CurrentOwner = rotation.RotationOrder[nextIndex]
 	rotation.LastRotationDate = time.Now()
 	rotation.NextRotationDate = calculateNextRotationDate(rotation.LastRotationDate, rotation.Frequency)
 
 	// Save the updated rotation.
 	item, err := attributevalue.MarshalMap(rotation)
+
 	if err != nil {
 		return fmt.Errorf("failed to marshal rotation: %w", err)
 	}
@@ -96,6 +102,7 @@ func (r *DynamoDBRotationRepository) AdvanceRotation(ctx context.Context, teamID
 		TableName: aws.String(r.tableName),
 		Item:      item,
 	}
+
 	_, err = r.client.PutItem(ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to update rotation: %w", err)
@@ -105,19 +112,39 @@ func (r *DynamoDBRotationRepository) AdvanceRotation(ctx context.Context, teamID
 }
 
 // CreateRotation creates a new rotation record.
-func (r *DynamoDBRotationRepository) CreateRotation(ctx context.Context, rotation Rotation) error {
+func (r *DynamoDBRotationRepository) UpsertRotation(ctx context.Context, rotation Rotation) error {
+	// Determine if this is a new rotation or an update.
+	var input dynamodb.PutItemInput
+
+	input.TableName = aws.String(r.tableName)
+
+	if rotation.Version == 0 {
+		// New rotation: initialize version to 1 and condition that item does not exist.
+		rotation.Version = 1
+		input.ConditionExpression = aws.String("attribute_not_exists(creator_team_id) AND attribute_not_exists(rotation_label)")
+	} else {
+		// Update: enforce version check (optimistic concurrency).
+		currentVersion := rotation.Version
+		// Increment version for the new update.
+		rotation.Version = currentVersion + 1
+		input.ConditionExpression = aws.String("version = :v")
+		input.ExpressionAttributeValues = map[string]types.AttributeValue{
+			":v": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", currentVersion)},
+		}
+	}
+
 	item, err := attributevalue.MarshalMap(rotation)
 	if err != nil {
 		return fmt.Errorf("failed to marshal rotation: %w", err)
 	}
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String(r.tableName),
-		Item:      item,
-	}
-	_, err = r.client.PutItem(ctx, input)
+
+	input.Item = item
+
+	_, err = r.client.PutItem(ctx, &input)
 	if err != nil {
-		return fmt.Errorf("failed to create rotation: %w", err)
+		return fmt.Errorf("failed to update/create rotation: %w", err)
 	}
+
 	return nil
 }
 
@@ -126,12 +153,16 @@ func calculateNextRotationDate(lastDate time.Time, frequency string) time.Time {
 	switch frequency {
 	case "daily":
 		return lastDate.AddDate(0, 0, 1) //nolint:mnd
+
 	case "weekly":
 		return lastDate.AddDate(0, 0, 7) //nolint:mnd
+
 	case "biweekly":
 		return lastDate.AddDate(0, 0, 14) //nolint:mnd
+
 	case "monthly":
 		return lastDate.AddDate(0, 1, 0) //nolint:mnd
+
 	default:
 		return lastDate.AddDate(0, 0, 7) //nolint:mnd
 	}

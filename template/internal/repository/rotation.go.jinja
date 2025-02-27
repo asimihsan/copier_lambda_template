@@ -8,15 +8,17 @@ import (
 // Rotation represents a deployment rotation.
 // Note that the composite key is: creator_team_id (partition key) and rotation_label (sort key).
 type Rotation struct {
-	CreatorTeamID    string    `json:"creator_team_id"`    // Partition key: Slack team ID
-	RotationLabel    string    `json:"rotation_label"`     // Sort key: user‑friendly name (unique per team)
-	Frequency        string    `json:"frequency"`
-	CurrentOwner     string    `json:"current_owner"`
-	RotationOrder    []string  `json:"rotation_order"`
-	LastRotationDate time.Time `json:"last_rotation_date"`
-	NextRotationDate time.Time `json:"next_rotation_date"`
-	CreatorUserID    string    `json:"creator_user_id"`
-	CreatorUserName  string    `json:"creator_user_name"`
+	CreatorTeamID    string    `dynamodbav:"creator_team_id" json:"creator_team_id"` // Partition key: Slack team ID
+	RotationLabel    string    `dynamodbav:"rotation_label" json:"rotation_label"`   // Sort key: user‑friendly name (unique per team)
+	Frequency        string    `dynamodbav:"frequency" json:"frequency"`
+	CurrentOwner     string    `dynamodbav:"current_owner" json:"current_owner"`
+	RotationOrder    []string  `dynamodbav:"rotation_order" json:"rotation_order"`
+	LastRotationDate time.Time `dynamodbav:"last_rotation_date" json:"last_rotation_date"`
+	NextRotationDate time.Time `dynamodbav:"next_rotation_date" json:"next_rotation_date"`
+	CreatorUserID    string    `dynamodbav:"creator_user_id" json:"creator_user_id"`
+	CreatorUserName  string    `dynamodbav:"creator_user_name" json:"creator_user_name"`
+	// Added version for optimistic concurrency.
+	Version int `dynamodbav:"version" json:"version"`
 }
 
 // RotationRepository defines operations on a rotation.
@@ -25,6 +27,6 @@ type RotationRepository interface {
 	GetRotation(ctx context.Context, teamID, rotationLabel string) (*Rotation, error)
 	// AdvanceRotation moves the rotation forward for the given team and label.
 	AdvanceRotation(ctx context.Context, teamID, rotationLabel string) error
-	// CreateRotation creates a new rotation.
-	CreateRotation(ctx context.Context, rotation Rotation) error
+	// UpsertRotation creates or updates a rotation.
+	UpsertRotation(ctx context.Context, rotation Rotation) error
 }

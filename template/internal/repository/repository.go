@@ -7,11 +7,11 @@ import (
 
 // User represents a user in the system
 type User struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID        string    `dynamodbav:"id" json:"id"`
+	Email     string    `dynamodbav:"email" json:"email"`
+	Name      string    `dynamodbav:"name" json:"name"`
+	CreatedAt time.Time `dynamodbav:"created_at" json:"createdAt"`
+	UpdatedAt time.Time `dynamodbav:"updated_at" json:"updatedAt"`
 }
 
 // UserCreate represents the data needed to create a user

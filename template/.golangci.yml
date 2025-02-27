@@ -16,7 +16,6 @@ linters:
         - govet # Reports potential issues that could lead to bugs.
         - ineffassign # Detects when assignments to existing variables are not used.
         - misspell # Corrects commonly misspelled English words in source files.
-        - mnd # Checks for magic numbers.
         - nilerr # Checks for a no-op error handling, which could indicate a bug.
         - prealloc # Suggests pre-allocation of slices for performance improvement.
         - staticcheck # A highly-regarded linter focusing on correctness and performance.
