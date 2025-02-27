@@ -44,57 +44,33 @@ func NewSlackHandler(
 }
 
 func (h *SlackHandler) PostSlack(ctx echo.Context) error {
-	// Bind the request body to the generated union type.
-	var reqBody PostSlackFormdataBody
-	if err := ctx.Bind(&reqBody); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "failed to bind request body")
+	h.logger.Info().Msg("Received Slack command")
+
+	// Work with already parsed form
+	formValues := ctx.Request().Form
+
+	if formValues == nil {
+		h.logger.Error().Msg("Form values are nil")
+		return echo.NewHTTPError(http.StatusInternalServerError, "form values are nil")
 	}
 
-	// Try to unmarshal as the SSL-check variant.
-	var sslPayload PostSlackFormdataBody0
-	if err := json.Unmarshal(reqBody.union, &sslPayload); err == nil && sslPayload.SslCheck == "1" {
-		// Slack is doing an SSL check – simply acknowledge.
+	if formValues.Get("ssl_check") == "1" {
+		h.logger.Info().Msg("Received SSL check from Slack")
 		return ctx.NoContent(http.StatusOK)
-	}
-
-	// Otherwise, unmarshal into the normal payload variant.
-	var payload PostSlackFormdataBody1
-	if err := json.Unmarshal(reqBody.union, &payload); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid payload structure")
 	}
 
 	// Build a slack.SlashCommand from the payload.
 	slashCmd := slack.SlashCommand{
-		// Note: if you are not relying on the deprecated token field, you can ignore it or compare
-		TeamID:      payload.TeamId,
-		ChannelID:   payload.ChannelId,
-		Command:     payload.Command,
-		ResponseURL: payload.ResponseUrl,
-		UserID:      payload.UserId,
-	}
-
-	if payload.Text != nil {
-		slashCmd.Text = *payload.Text
-	}
-
-	if payload.ChannelName != nil {
-		slashCmd.ChannelName = *payload.ChannelName
-	}
-
-	if payload.Token != nil {
-		slashCmd.Token = *payload.Token
-	}
-
-	if payload.UserName != nil {
-		slashCmd.UserName = *payload.UserName
-	}
-
-	if payload.TriggerId != nil {
-		slashCmd.TriggerID = *payload.TriggerId
-	}
-
-	if payload.ApiAppId != nil {
-		slashCmd.APIAppID = *payload.ApiAppId
+		APIAppID:    formValues.Get("api_app_id"),
+		ChannelName: formValues.Get("channel_name"),
+		ChannelID:   formValues.Get("channel_id"),
+		Command:     formValues.Get("command"),
+		ResponseURL: formValues.Get("response_url"),
+		TeamID:      formValues.Get("team_id"),
+		Text:        formValues.Get("text"),
+		TriggerID:   formValues.Get("trigger_id"),
+		UserID:      formValues.Get("user_id"),
+		UserName:    formValues.Get("user_name"),
 	}
 
 	h.logger.Info().
@@ -105,6 +81,7 @@ func (h *SlackHandler) PostSlack(ctx echo.Context) error {
 	msg, err := h.registry.Dispatch(ctx.Request().Context(), slashCmd)
 
 	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to dispatch command")
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("command dispatch error: %v", err))
 	}
 

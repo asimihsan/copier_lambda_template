@@ -39,8 +39,8 @@ Resources:
           OVERRIDE_TABLE_NAME: !Ref OverrideTableName
           ROTATION_TABLE_NAME: !Ref RotationTableName
       AutoPublishAlias: live
-      ProvisionedConcurrencyConfig:
-        ProvisionedConcurrentExecutions: 1
+	  ProvisionedConcurrencyConfig:
+	    ProvisionedConcurrentExecutions: 1
     Metadata:
       DockerTag: latest
       DockerContext: ../
