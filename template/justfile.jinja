@@ -64,8 +64,12 @@ sam-deploy:
     REPO_URI=$(cd terraform/infrastructure && terragrunt output -json repository_url | jq -r '.')
     echo "ECR repository URL: $REPO_URI"
     echo "Retrieving Lambda role ARN..."
-    LAMBDA_EXEC_ROLE=$(cd terraform/dev/generated_lambda_template_pre && terragrunt output -json lambda_exec_role | jq -r '.')
+    LAMBDA_EXEC_ROLE=$(cd terraform/dev/{{ project_name }}_pre && terragrunt output -json lambda_exec_role | jq -r '.')
     echo "Lambda role ARN: $LAMBDA_EXEC_ROLE"
+    
+    # Retrieving project prefix
+    PROJECT_PREFIX=$(cd terraform/dev/{{ project_name }}_pre && terragrunt output -json project_prefix | jq -r '.')
+    echo "Project prefix: $PROJECT_PREFIX"
     
     # Build and tag Docker image
     docker build --target final -t generated_lambda_template:latest .
@@ -78,11 +82,11 @@ sam-deploy:
     # Build and deploy with SAM (no guided mode)
     mise x aws-sam -- sam build --use-container --template-file sam/template.yaml
     mise x aws-sam -- sam deploy \
-        --stack-name {{ project_name_hyphens }}-lambda \
+        --stack-name "$PROJECT_PREFIX" \
         --capabilities CAPABILITY_IAM \
         --no-confirm-changeset \
         --no-fail-on-empty-changeset \
         --template-file .aws-sam/build/template.yaml \
-        --parameter-overrides "EcrRepoUrl=$REPO_URI LambdaRole=$LAMBDA_EXEC_ROLE" \
+        --parameter-overrides "EcrRepoUrl=$REPO_URI LambdaRole=$LAMBDA_EXEC_ROLE ProjectPrefix=$PROJECT_PREFIX" \
         --region us-west-2 \
         --image-repository $REPO_URI

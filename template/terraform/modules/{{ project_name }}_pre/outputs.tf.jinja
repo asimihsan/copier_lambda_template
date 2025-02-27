@@ -9,3 +9,8 @@ output "dynamodb_table_override_requests" {
 output "lambda_exec_role" {
   value = aws_iam_role.lambda_exec_role.arn
 }
+
+output "project_prefix" {
+  value       = var.project_prefix
+  description = "The computed project prefix, including any random suffix"
+}

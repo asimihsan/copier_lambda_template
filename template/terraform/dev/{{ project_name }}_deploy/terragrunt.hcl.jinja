@@ -12,10 +12,6 @@ dependency "infra" {
 
 dependency "{{ project_name }}_pre" {
   config_path = "../{{ project_name }}_pre"
-
-  mock_outputs = {
-    lambda_function_name = "mock-lambda-function-name"
-  }
 }
 
 terraform {

@@ -9,12 +9,16 @@ Parameters:
   LambdaRole:
     Type: String
     Description: IAM Role ARN for Lambda execution
+    
+  ProjectPrefix:
+    Type: String
+    Description: The project prefix with suffix, e.g. project-name-dev-randomsuffix
 
 Resources:
   MyFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: {{ project_name_hyphens }}-lambda
+      FunctionName: !Sub "${ProjectPrefix}-lambda"
       PackageType: Image
       Role: !Ref LambdaRole
       Architectures:
@@ -24,6 +28,9 @@ Resources:
       Environment:
         Variables:
           ENVIRONMENT: dev
+    AutoPublishAlias: live
+    ProvisionedConcurrencyConfig:
+      ProvisionedConcurrentExecutions: 1
     Metadata:
       DockerTag: latest
       DockerContext: ../
@@ -33,6 +40,3 @@ Outputs:
   LambdaFunction:
     Description: Lambda Function Name
     Value: !Ref MyFunction
-  FunctionName:
-    Description: Lambda Function Name for URL configuration
-    Value: {{ project_name_hyphens }}-lambda

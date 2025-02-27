@@ -13,7 +13,7 @@ data "external" "deploy_hash" {
 
 resource "null_resource" "sam_deploy" {
   provisioner "local-exec" {
-    working_dir = "${path.module}/../../.."
+    working_dir = var.repo_root_dir
     command = "just sam-deploy"
   }
   
