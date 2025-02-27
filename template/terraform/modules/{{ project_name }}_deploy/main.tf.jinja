@@ -7,13 +7,13 @@ provider "aws" {
 }
 
 data "external" "deploy_hash" {
-  program = ["bash", "${path.module}/../../scripts/compute_deploy_hash.sh"]
+  program = ["bash", "${path.module}/../../../scripts/compute_deploy_hash.sh", "{{ project_name }}"]
   query   = {}  // Ignore any incoming query
 }
 
 resource "null_resource" "sam_deploy" {
   provisioner "local-exec" {
-    working_dir = "${path.module}/../.."
+    working_dir = "${path.module}/../../.."
     command = "just sam-deploy"
   }
   
