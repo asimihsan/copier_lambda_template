@@ -36,3 +36,15 @@ It demonstrates:
    just deploy-app
    ```
 
+## Secrets
+
+```shell
+cp secrets/lambda-secrets.yaml.template secrets/lambda-secrets.yaml
+```
+
+Fill it in, then copy the SOPS AGE key from 1Password into `~/.config/sops/age/key.txt`, then
+
+```shell
+export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
+sops --encrypt --in-place secrets/lambda-secrets.yaml
+```

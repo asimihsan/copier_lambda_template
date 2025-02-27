@@ -1,18 +1,21 @@
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.14.0/.schema/devbox.schema.json",
   "packages": [
+    "_1password-cli@latest",
+    "age@latest",
     "aws-vault@latest",
     "awscli2@latest",
     "bash@latest",
     "coreutils@latest",
     "fd@latest",
     "goimports-reviser@latest",
-    "just@latest",
     "jq@latest",
+    "just@latest",
     "openssl@latest",
     "opentofu@latest",
+    "sops@latest",
     "terragrunt@latest",
-    "tflint@latest",
+    "tflint@latest"
   ],
   "shell": {
     "init_hook": [

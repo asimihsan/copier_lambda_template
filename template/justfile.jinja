@@ -50,25 +50,40 @@ push:
     echo "Pushing {{ project_name }} to ECR..."
 
 terraform-init:
-    cd terraform && terragrunt run-all init --tf-forward-stdout
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export TF_STATE_ENCRYPTION_PASSPHRASE=$(op read "{{ tofu_password_1password_ref}}")
+    export SOPS_AGE_KEY_FILE=~/.config/sops/age/key.txt
+    cd terraform && terragrunt run-all init --tf-path tofu --tf-forward-stdout
 
 terraform-dev-plan:
-    cd terraform/dev && terragrunt run-all plan --tf-forward-stdout --queue-include-external
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export TF_STATE_ENCRYPTION_PASSPHRASE=$(op read "{{ tofu_password_1password_ref}}")
+    export SOPS_AGE_KEY_FILE=~/.config/sops/age/key.txt
+    cd terraform/dev && terragrunt run-all plan --tf-path tofu --tf-forward-stdout --queue-include-external
 
 terraform-dev-apply:
-    cd terraform/dev && terragrunt run-all apply --tf-forward-stdout --queue-include-external
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export TF_STATE_ENCRYPTION_PASSPHRASE=$(op read "{{ tofu_password_1password_ref}}")
+    export SOPS_AGE_KEY_FILE=~/.config/sops/age/key.txt
+    cd terraform/dev && terragrunt run-all apply --tf-path tofu --tf-forward-stdout --queue-include-external
 
 sam-deploy:
     #!/usr/bin/env bash
+    export TF_STATE_ENCRYPTION_PASSPHRASE=$(op read "{{ tofu_password_1password_ref}}")
+    export SOPS_AGE_KEY_FILE=~/.config/sops/age/key.txt
+
     echo "Retrieving ECR repository URL..."
-    REPO_URI=$(cd terraform/infrastructure && terragrunt output -json repository_url | jq -r '.')
+    REPO_URI=$(cd terraform/infrastructure && terragrunt output --tf-path tofu -json repository_url | jq -r '.')
     echo "ECR repository URL: $REPO_URI"
     echo "Retrieving Lambda role ARN..."
-    LAMBDA_EXEC_ROLE=$(cd terraform/dev/{{ project_name }}_pre && terragrunt output -json lambda_exec_role | jq -r '.')
+    LAMBDA_EXEC_ROLE=$(cd terraform/dev/{{ project_name }}_pre && terragrunt output --tf-path tofu -json lambda_exec_role | jq -r '.')
     echo "Lambda role ARN: $LAMBDA_EXEC_ROLE"
     
     # Retrieving project prefix
-    PROJECT_PREFIX=$(cd terraform/dev/{{ project_name }}_pre && terragrunt output -json project_prefix | jq -r '.')
+    PROJECT_PREFIX=$(cd terraform/dev/{{ project_name }}_pre && terragrunt output --tf-path tofu -json project_prefix | jq -r '.')
     echo "Project prefix: $PROJECT_PREFIX"
     
     # Build and deploy with SAM (no guided mode)
@@ -82,3 +97,7 @@ sam-deploy:
         --parameter-overrides "EcrRepoUrl=$REPO_URI LambdaRole=$LAMBDA_EXEC_ROLE ProjectPrefix=$PROJECT_PREFIX" \
         --region us-west-2 \
         --image-repository $REPO_URI
+
+create-sops-age-key:
+    mkdir -p ~/.config/sops/age
+    age-keygen -o ~/.config/sops/age/key.txt

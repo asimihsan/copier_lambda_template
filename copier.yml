@@ -21,6 +21,16 @@ random_suffix:
   help: "Random suffix to ensure unique resource names; defaults to a 8-character string"
   default: "{% set chars = 'abcdefghijklmnopqrstuvwxyz0123456789' %}{% for i in range(8) %}{{ chars|random }}{% endfor %}"
 
+sops_age_key_id:
+  type: str
+  help: "SOPS age key ID"
+  default: "age1yt3tfveiezghw6hhnlr8naw7ehjzpzfp73274m4mh9agyef5gg6svz34h5"
+
+tofu_password_1password_ref:
+  type: str
+  help: "1Password reference for the Tofu password"
+  default: "op://Private/{{ project_name }}/password"
+
 _exclude:
   - ".git"
 

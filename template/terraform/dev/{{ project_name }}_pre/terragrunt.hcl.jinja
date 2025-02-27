@@ -17,4 +17,6 @@ terraform {
 inputs = {
   project_prefix = "{{ project_name_hyphens }}-dev-{{ random_suffix }}"
   region         = "us-west-2"
+
+  repo_root_dir   = "${get_terragrunt_dir()}/../../../"
 }

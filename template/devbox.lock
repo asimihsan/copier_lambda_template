@@ -1,6 +1,54 @@
 {
   "lockfile_version": "1",
   "packages": {
+    "age@latest": {
+      "last_modified": "2025-02-07T11:26:36Z",
+      "resolved": "github:NixOS/nixpkgs/d98abf5cf5914e5e4e9d57205e3af55ca90ffc1d#age",
+      "source": "devbox-search",
+      "version": "1.2.1",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/25yv99a0063sj9iwmll3cd824li509zr-age-1.2.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/25yv99a0063sj9iwmll3cd824li509zr-age-1.2.1"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/pkk14yxri15baxrmvmyb1d9i9zqnmii6-age-1.2.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/pkk14yxri15baxrmvmyb1d9i9zqnmii6-age-1.2.1"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/h2v8a0fs2hn042m9gp1ldaxvm263gy2y-age-1.2.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/h2v8a0fs2hn042m9gp1ldaxvm263gy2y-age-1.2.1"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/lhsrq5ysah5jkzv8pjrcxra163k59mz1-age-1.2.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/lhsrq5ysah5jkzv8pjrcxra163k59mz1-age-1.2.1"
+        }
+      }
+    },
     "aws-vault@latest": {
       "last_modified": "2025-02-07T11:26:36Z",
       "resolved": "github:NixOS/nixpkgs/d98abf5cf5914e5e4e9d57205e3af55ca90ffc1d#aws-vault",
@@ -777,6 +825,54 @@
             }
           ],
           "store_path": "/nix/store/1gc7dl8bcrks1y98qlblr08aly4b3qry-opentofu-1.9.0"
+        }
+      }
+    },
+    "sops@latest": {
+      "last_modified": "2025-02-07T11:26:36Z",
+      "resolved": "github:NixOS/nixpkgs/d98abf5cf5914e5e4e9d57205e3af55ca90ffc1d#sops",
+      "source": "devbox-search",
+      "version": "3.9.4",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/asfydw69f5cfz0k4h1xg7fyxrj4imsq5-sops-3.9.4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/asfydw69f5cfz0k4h1xg7fyxrj4imsq5-sops-3.9.4"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/6v3n9r22fhg4v6w3xm1sb8b4qj38vxy5-sops-3.9.4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/6v3n9r22fhg4v6w3xm1sb8b4qj38vxy5-sops-3.9.4"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/w9daavpv6sgpw9qd4m64r12na46929hc-sops-3.9.4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/w9daavpv6sgpw9qd4m64r12na46929hc-sops-3.9.4"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/pgigk14vnxpp5qr30znvhvrdzc5wlqxj-sops-3.9.4",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/pgigk14vnxpp5qr30znvhvrdzc5wlqxj-sops-3.9.4"
         }
       }
     },

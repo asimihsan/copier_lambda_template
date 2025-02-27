@@ -1,6 +1,12 @@
 variable "region" {
   type = string
 }
+
 variable "project_prefix" {
   type = string
+}
+
+variable "repo_root_dir" {
+  type        = string
+  description = "Absolute path to the repository root"
 }

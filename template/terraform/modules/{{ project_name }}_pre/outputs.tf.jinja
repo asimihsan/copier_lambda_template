@@ -6,6 +6,10 @@ output "dynamodb_table_override_requests" {
   value = aws_dynamodb_table.override_requests.name
 }
 
+output "lambda_secrets_arn" {
+  value = aws_secretsmanager_secret.lambda_secrets.arn
+}
+
 output "lambda_exec_role" {
   value = aws_iam_role.lambda_exec_role.arn
 }
