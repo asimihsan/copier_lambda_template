@@ -53,7 +53,7 @@ func LoadConfig() (*Config, error) {
 	}
 
 	cfg := &Config{
-		Region: getEnv("AWS_REGION", "us-east-1"),
+		Region: getEnv("REGION", "us-east-2"),
 		Server: ServerConfig{
 			Port:     getEnvAsInt("PORT", 8080), //nolint:mnd
 			BasePath: getEnv("BASE_PATH", "/api/v1"),
