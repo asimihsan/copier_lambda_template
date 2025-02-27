@@ -14,14 +14,17 @@ type RotationCommand struct {
 	repo repository.RotationRepository
 }
 
+var _ SlackCommandHandler = (*RotationCommand)(nil)
+
 func NewRotationCommand(repo repository.RotationRepository) *RotationCommand {
 	return &RotationCommand{
 		repo: repo,
 	}
 }
 
-func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand, args string) (slack.Msg, error) {
-	args = strings.TrimSpace(args)
+func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand) (slack.Msg, error) {
+	args := strings.TrimSpace(cmd.Text)
+
 	switch strings.ToLower(args) {
 	case "", "show":
 		// For MVP, return a stubbed rotation status.
@@ -29,11 +32,13 @@ func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 			ResponseType: slack.ResponseTypeInChannel,
 			Text:         "Rotation schedule: Current owner is @user1, next in line: @user2.",
 		}, nil
+
 	case "next":
 		return slack.Msg{
 			ResponseType: slack.ResponseTypeInChannel,
 			Text:         "Next deployment owner is @user2.",
 		}, nil
+
 	default:
 		return slack.Msg{
 			ResponseType: slack.ResponseTypeEphemeral,
