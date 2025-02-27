@@ -57,7 +57,7 @@ func LoadConfig() (*Config, error) {
 			DynamoDBTableName: getEnv("DYNAMODB_TABLE_NAME", "users"),
 			IsLocal:           getEnvAsBool("APP_LOCAL_MODE", false),
 		},
-		LogLevel: getEnv("LOG_LEVEL", "info"),
+		LogLevel: getEnv("LOG_LEVEL", "debug"),
 		Slack: SlackConfig{
 			SigningSecret:     getEnv("SLACK_SIGNING_SECRET", ""),
 			BotToken:          getEnv("SLACK_BOT_TOKEN", ""),

@@ -3,135 +3,83 @@ info:
   title: User API
   version: 1.0.0
   description: A simple user management API
+
 servers:
   - url: /api/v1
+
 paths:
-  /users:
-    get:
-      summary: List users
-      operationId: listUsers
-      responses:
-        '200':
-          description: List of users
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/User'
+  /slack:
     post:
-      summary: Create a new user
-      operationId: createUser
+      summary: "Handle Slack slash command"
+      description: "Endpoint to receive Slack slash command payloads."
       requestBody:
         required: true
         content:
-          application/json:
+          application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/UserCreate'
-      responses:
-        '201':
-          description: User created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-  /users/{id}:
-    get:
-      summary: Get a user
-      operationId: getUser
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
+              oneOf:
+                - type: object
+                  properties:
+                    ssl_check:
+                      type: string
+                      enum: ["1"]
+                    token:
+                      type: string
+                  required:
+                    - ssl_check
+                    - token
+                - type: object
+                  properties:
+                    token:
+                      type: string
+                      description: "Verification token (deprecated)"
+                    team_id:
+                      type: string
+                    team_domain:
+                      type: string
+                    enterprise_id:
+                      type: string
+                      nullable: true
+                    enterprise_name:
+                      type: string
+                      nullable: true
+                    channel_id:
+                      type: string
+                    channel_name:
+                      type: string
+                    user_id:
+                      type: string
+                    user_name:
+                      type: string
+                    command:
+                      type: string
+                      description: "The slash command that was invoked (e.g. /weather)"
+                    text:
+                      type: string
+                      description: "Any additional text provided after the command"
+                    response_url:
+                      type: string
+                      format: uri
+                    trigger_id:
+                      type: string
+                    api_app_id:
+                      type: string
+                  required:
+                    - team_id
+                    - channel_id
+                    - user_id
+                    - command
+                    - response_url
       responses:
         '200':
-          description: User details
+          description: "Successful acknowledgement with optional immediate response."
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
-        '404':
-          description: User not found
-    put:
-      summary: Update a user
-      operationId: updateUser
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UserUpdate'
-      responses:
-        '200':
-          description: User updated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-        '404':
-          description: User not found
-    delete:
-      summary: Delete a user
-      operationId: deleteUser
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '204':
-          description: User deleted
-        '404':
-          description: User not found
-components:
-  schemas:
-    UserCreate:
-      type: object
-      required:
-        - email
-        - name
-      properties:
-        email:
-          type: string
-          format: email
-        name:
-          type: string
-    UserUpdate:
-      type: object
-      properties:
-        email:
-          type: string
-          format: email
-        name:
-          type: string
-    User:
-      type: object
-      required:
-        - id
-        - email
-        - name
-        - createdAt
-        - updatedAt
-      properties:
-        id:
-          type: string
-        email:
-          type: string
-          format: email
-        name:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
+                type: object
+                properties:
+                  response_type:
+                    type: string
+                    description: "Either 'ephemeral' or 'in_channel'"
+                  text:
+                    type: string

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/rs/zerolog/log"
+	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog"
+
 	"github.com/slack-go/slack"
 
 	"{{ github_path }}/internal/config"
@@ -13,41 +15,98 @@ import (
 	slackcmd "{{ github_path }}/internal/slack"
 )
 
-// NewSlackHandler returns an http.Handler that processes Slack slash commands.
-// It initializes a command registry with all commands and uses it to dispatch.
-func NewSlackHandler(overrideRepo repository.OverrideRepository, rotationRepo repository.RotationRepository, slackConfig config.SlackConfig) http.Handler {
-	logger := log.Logger
+type SlackHandler struct {
+	rotationRepo repository.RotationRepository
+	overrideRepo repository.OverrideRepository
+	slackConfig  config.SlackConfig
+	registry     *slackcmd.Registry
+	logger       zerolog.Logger
+}
 
+func NewSlackHandler(
+	overrideRepo repository.OverrideRepository,
+	rotationRepo repository.RotationRepository,
+	slackConfig config.SlackConfig,
+	logger zerolog.Logger,
+) *SlackHandler {
 	registry := slackcmd.NewRegistry(logger)
+
 	registry.Register("rotation", slackcmd.NewRotationCommand(rotationRepo))
 	registry.Register("override", slackcmd.NewOverrideCommand(overrideRepo))
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		slashCmd, err := slack.SlashCommandParse(r)
-		if err != nil {
-			logger.Error().Err(err).Msg("Failed to parse slash command")
-			http.Error(w, "Failed to parse slash command", http.StatusInternalServerError)
-			return
-		}
+	return &SlackHandler{
+		rotationRepo: rotationRepo,
+		overrideRepo: overrideRepo,
+		slackConfig:  slackConfig,
+		registry:     registry,
+		logger:       logger,
+	}
+}
 
-		logger.Info().
-			Str("command", slashCmd.Command).
-			Str("text", slashCmd.Text).
-			Msg("Slack command received")
+func (h *SlackHandler) PostSlack(ctx echo.Context) error {
+	// Bind the request body to the generated union type.
+	var reqBody PostSlackFormdataBody
+	if err := ctx.Bind(&reqBody); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "failed to bind request body")
+	}
 
-		msg, err := registry.Dispatch(ctx, slashCmd)
-		if err != nil {
-			logger.Error().Err(err).Msg("Error handling Slack command")
-			http.Error(w, fmt.Sprintf("Error: %v", err), http.StatusInternalServerError)
-			return
-		}
+	// Try to unmarshal as the SSL-check variant.
+	var sslPayload PostSlackFormdataBody0
+	if err := json.Unmarshal(reqBody.union, &sslPayload); err == nil && sslPayload.SslCheck == "1" {
+		// Slack is doing an SSL check – simply acknowledge.
+		return ctx.NoContent(http.StatusOK)
+	}
 
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(msg); err != nil {
-			logger.Error().Err(err).Msg("Failed to encode Slack response")
-			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-			return
-		}
-	})
+	// Otherwise, unmarshal into the normal payload variant.
+	var payload PostSlackFormdataBody1
+	if err := json.Unmarshal(reqBody.union, &payload); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid payload structure")
+	}
+
+	// Build a slack.SlashCommand from the payload.
+	slashCmd := slack.SlashCommand{
+		// Note: if you are not relying on the deprecated token field, you can ignore it or compare
+		TeamID:      payload.TeamId,
+		ChannelID:   payload.ChannelId,
+		Command:     payload.Command,
+		ResponseURL: payload.ResponseUrl,
+		UserID:      payload.UserId,
+	}
+
+	if payload.Text != nil {
+		slashCmd.Text = *payload.Text
+	}
+
+	if payload.ChannelName != nil {
+		slashCmd.ChannelName = *payload.ChannelName
+	}
+
+	if payload.Token != nil {
+		slashCmd.Token = *payload.Token
+	}
+
+	if payload.UserName != nil {
+		slashCmd.UserName = *payload.UserName
+	}
+
+	if payload.TriggerId != nil {
+		slashCmd.TriggerID = *payload.TriggerId
+	}
+
+	if payload.ApiAppId != nil {
+		slashCmd.APIAppID = *payload.ApiAppId
+	}
+
+	h.logger.Info().
+		Str("command", slashCmd.Command).
+		Str("text", slashCmd.Text).
+		Msg("Slack command received")
+
+	msg, err := h.registry.Dispatch(ctx.Request().Context(), slashCmd)
+
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("command dispatch error: %v", err))
+	}
+
+	return ctx.JSON(http.StatusOK, msg)
 }

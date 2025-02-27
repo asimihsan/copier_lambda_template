@@ -2,22 +2,20 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
-	"time"
 
 	"{{ github_path }}/internal/config"
 	"{{ github_path }}/internal/handler"
 	"{{ github_path }}/internal/repository"
+	"{{ github_path }}/internal/server"
 	"{{ github_path }}/pkg/logger"
-	"{{ github_path }}/pkg/middleware"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 )
 
 func main() {
 	app := &cli.App{
-		Name:  "rotateorama",
+		Name:  "{{ project_name }}",
 		Usage: "A user management service with DynamoDB backend and Slack integration2",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
@@ -85,69 +83,34 @@ func main() {
 }
 
 func run(c *cli.Context) error {
-	// Create config from CLI flags
-	cfg := &config.Config{
-		Server: config.ServerConfig{
-			Port:     c.Int("port"),
-			BasePath: c.String("base-path"),
-		},
-		Database: config.DatabaseConfig{
-			DynamoDBEndpoint:  c.String("dynamodb-endpoint"),
-			DynamoDBRegion:    c.String("dynamodb-region"),
-			DynamoDBTableName: c.String("dynamodb-table"),
-			IsLocal:           c.Bool("local"),
-		},
-		LogLevel: c.String("log-level"),
-		Slack: config.SlackConfig{
-			SigningSecret: c.String("slack-signing-secret"),
-			BotToken:      c.String("slack-bot-token"),
-		},
+	// Load config and initialize logger.
+	cfg, err := config.LoadConfig()
+
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Clear endpoint if not in local mode
-	if !cfg.Database.IsLocal {
-		cfg.Database.DynamoDBEndpoint = ""
-	}
-
-	// Setup logger
 	logger.Setup(cfg.LogLevel)
-	log.Info().
-		Bool("localMode", cfg.Database.IsLocal).
-		Str("region", cfg.Database.DynamoDBRegion).
-		Str("endpoint", cfg.Database.DynamoDBEndpoint).
-		Int("port", cfg.Server.Port).
-		Msg("Starting application")
 
-	// Create a DynamoDB client (no more UserRepository)
+	// Create DynamoDB client and repositories.
 	dynamoClient, err := repository.NewDynamoDBClient(
 		cfg.Database.DynamoDBEndpoint,
 		cfg.Database.DynamoDBRegion,
 		cfg.Database.IsLocal,
 	)
+
 	if err != nil {
 		return fmt.Errorf("failed to create DynamoDB client: %w", err)
 	}
 
-	// Build our specific repositories
 	overrideRepo := repository.NewDynamoDBOverrideRepository(dynamoClient, cfg.Slack.OverrideTableName)
 	rotationRepo := repository.NewDynamoDBRotationRepository(dynamoClient, cfg.Slack.RotationTableName)
 
-	// Create the Slack handler with the new repositories and Slack config
-	slackHandler := handler.NewSlackHandler(overrideRepo, rotationRepo, cfg.Slack)
+	// Create your API server that implements the generated interface.
+	// (You must provide an implementation of handler.ServerInterface for your API endpoints.)
+	apiHandler := handler.NewSlackHandler(overrideRepo, rotationRepo, cfg.Slack, log.Logger)
+	srv := server.New(cfg, apiHandler)
 
-	// Inject the Slack signing secret and global logger into the middleware
-	verificationMw := middleware.NewSlackVerificationMiddleware(cfg.Slack.SigningSecret, log.Logger)
-	http.Handle("/slash", middleware.LoggingMiddleware(verificationMw(slackHandler)))
-
-	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	log.Info().Msgf("Slack bot server listening on %s", addr)
-
-	server := &http.Server{
-		Addr:         addr,
-		Handler:      nil, // Use default router
-		ReadTimeout:  15 * time.Second, //nolint:mnd
-		WriteTimeout: 15 * time.Second, //nolint:mnd
-		IdleTimeout:  60 * time.Second, //nolint:mnd
-	}
-	return server.ListenAndServe()
+	// Start the Echo server.
+	return srv.Start()
 }
