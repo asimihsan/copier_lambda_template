@@ -30,4 +30,6 @@ inputs = {
   stack_name     = "{{ project_name }}-lambda"
   ecr_repo_url   = dependency.infra.outputs.repository_url
   lambda_role_arn = dependency.{{ project_name }}_pre.outputs.lambda_exec_role
+  
+  repo_root_dir   = "${get_terragrunt_dir()}/../../../"
 }

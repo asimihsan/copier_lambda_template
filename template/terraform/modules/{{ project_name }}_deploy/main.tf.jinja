@@ -7,7 +7,7 @@ provider "aws" {
 }
 
 data "external" "deploy_hash" {
-  program = ["bash", "${path.module}/../../../scripts/compute_deploy_hash.sh", "{{ project_name }}"]
+  program = ["bash", "${var.repo_root_dir}/scripts/compute_deploy_hash.sh", "{{ project_name }}"]
   query   = {}  // Ignore any incoming query
 }
 
