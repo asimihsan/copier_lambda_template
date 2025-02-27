@@ -2,10 +2,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
 Parameters:
-  EcrRepoUrl:
-    Type: String
-    Description: ECR Repository URL
-  
   LambdaRole:
     Type: String
     Description: IAM Role ARN for Lambda execution
@@ -13,6 +9,18 @@ Parameters:
   ProjectPrefix:
     Type: String
     Description: The project prefix with suffix, e.g. project-name-dev-randomsuffix
+
+  SecretsArn:
+    Type: String
+    Description: Secrets Manager ARN for secrets
+
+  OverrideTableName:
+    Type: String
+    Description: DynamoDB table name for overrides
+
+  RotationTableName:
+    Type: String
+    Description: DynamoDB table name for rotation
 
 Resources:
   MyFunction:
@@ -27,7 +35,9 @@ Resources:
       Timeout: 10
       Environment:
         Variables:
-          ENVIRONMENT: dev
+          SECRETS_ARN: !Ref SecretsArn
+          OVERRIDE_TABLE_NAME: !Ref OverrideTableName
+          ROTATION_TABLE_NAME: !Ref RotationTableName
       AutoPublishAlias: live
       ProvisionedConcurrencyConfig:
         ProvisionedConcurrentExecutions: 1

@@ -1,9 +1,15 @@
 package config
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"strconv"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog/log"
 )
@@ -45,7 +51,7 @@ func LoadConfig() (*Config, error) {
 		log.Info().Msg("No .env file found, using environment variables")
 	}
 
-	return &Config{
+	cfg := &Config{
 		Server: ServerConfig{
 			Port:     getEnvAsInt("PORT", 8080), //nolint:mnd
 			BasePath: getEnv("BASE_PATH", "/api/v1"),
@@ -57,12 +63,42 @@ func LoadConfig() (*Config, error) {
 		},
 		LogLevel: getEnv("LOG_LEVEL", "debug"),
 		Slack: SlackConfig{
-			SigningSecret:     getEnv("SLACK_SIGNING_SECRET", ""),
-			BotToken:          getEnv("SLACK_BOT_TOKEN", ""),
 			OverrideTableName: getEnv("OVERRIDE_TABLE_NAME", "overrides"),
 			RotationTableName: getEnv("ROTATION_TABLE_NAME", "rotations"),
 		},
-	}, nil
+	}
+
+	secretsArn := getEnv("SECRETS_ARN", "")
+
+	if secretsArn == "" {
+		return nil, fmt.Errorf("SECRETS_ARN is required")
+	}
+
+	secrets, err := loadSlackSecrets(context.Background(), secretsArn)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to load Slack secrets: %w", err)
+	}
+
+	token, ok := secrets["SLACK_APP_TOKEN"]
+
+	if !ok {
+		return nil, fmt.Errorf("missing SLACK_APP_TOKEN in Secrets Manager")
+	}
+
+	cfg.Slack.BotToken = token
+
+	secret, ok := secrets["SLACK_SIGNING_SECRET"]
+
+	if !ok {
+		return nil, fmt.Errorf("missing SLACK_SIGNING_SECRET in Secrets Manager")
+	}
+
+	cfg.Slack.SigningSecret = secret
+
+	log.Info().Msg("Loaded Slack secrets from Secrets Manager")
+
+	return cfg, nil
 }
 
 // getEnv gets an environment variable or returns a default value
@@ -102,4 +138,30 @@ func getEnvAsBool(key string, defaultValue bool) bool {
 	}
 
 	return value
+}
+
+func loadSlackSecrets(ctx context.Context, arn string) (map[string]string, error) {
+	cfg, err := awsconfig.LoadDefaultConfig(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	smClient := secretsmanager.NewFromConfig(cfg)
+	input := &secretsmanager.GetSecretValueInput{
+		SecretId: aws.String(arn),
+	}
+
+	result, err := smClient.GetSecretValue(ctx, input)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch secret from Secrets Manager: %w", err)
+	}
+
+	var secrets map[string]string
+	if err := json.Unmarshal([]byte(*result.SecretString), &secrets); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal secret string: %w", err)
+	}
+
+	return secrets, nil
 }

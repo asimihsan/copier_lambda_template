@@ -76,15 +76,28 @@ sam-deploy:
     export SOPS_AGE_KEY_FILE=~/.config/sops/age/key.txt
 
     echo "Retrieving ECR repository URL..."
-    REPO_URI=$(cd terraform/infrastructure && terragrunt output --tf-path tofu -json repository_url | jq -r '.')
+    REPO_URI=$(cd terraform/infrastructure && terragrunt output --tf-path tofu -json | jq -r '.repository_url.value')
     echo "ECR repository URL: $REPO_URI"
-    echo "Retrieving Lambda role ARN..."
-    LAMBDA_EXEC_ROLE=$(cd terraform/dev/{{ project_name }}_pre && terragrunt output --tf-path tofu -json lambda_exec_role | jq -r '.')
+
+    # Get all outputs from lambda template directory at once
+    echo "Retrieving lambda template outputs..."
+    LAMBDA_OUTPUTS=$(cd terraform/dev/generated_lambda_template_pre && terragrunt output --tf-path tofu -json)
+
+    # Extract individual values using jq with .value
+    LAMBDA_EXEC_ROLE=$(echo "$LAMBDA_OUTPUTS" | jq -r '.lambda_exec_role.value')
     echo "Lambda role ARN: $LAMBDA_EXEC_ROLE"
-    
-    # Retrieving project prefix
-    PROJECT_PREFIX=$(cd terraform/dev/{{ project_name }}_pre && terragrunt output --tf-path tofu -json project_prefix | jq -r '.')
+
+    PROJECT_PREFIX=$(echo "$LAMBDA_OUTPUTS" | jq -r '.project_prefix.value')
     echo "Project prefix: $PROJECT_PREFIX"
+
+    SECRETS_ARN=$(echo "$LAMBDA_OUTPUTS" | jq -r '.lambda_secrets_arn.value')
+    echo "Secrets ARN: $SECRETS_ARN"
+
+    OVERRIDE_TABLE_NAME=$(echo "$LAMBDA_OUTPUTS" | jq -r '.override_table_name.value')
+    echo "Override table name: $OVERRIDE_TABLE_NAME"
+
+    ROTATION_TABLE_NAME=$(echo "$LAMBDA_OUTPUTS" | jq -r '.rotation_table_name.value')
+    echo "Rotation table name: $ROTATION_TABLE_NAME"
     
     # Build and deploy with SAM (no guided mode)
     mise x aws-sam -- sam build --use-container --template-file sam/template.yaml
@@ -94,9 +107,14 @@ sam-deploy:
         --no-confirm-changeset \
         --no-fail-on-empty-changeset \
         --template-file .aws-sam/build/template.yaml \
-        --parameter-overrides "EcrRepoUrl=$REPO_URI LambdaRole=$LAMBDA_EXEC_ROLE ProjectPrefix=$PROJECT_PREFIX" \
         --region us-west-2 \
-        --image-repository $REPO_URI
+        --image-repository $REPO_URI \
+        --parameter-overrides \
+            LambdaRole=$LAMBDA_EXEC_ROLE \
+            ProjectPrefix=$PROJECT_PREFIX \
+            SecretsArn=$SECRETS_ARN \
+            OverrideTableName=$OVERRIDE_TABLE_NAME \
+            RotationTableName=$ROTATION_TABLE_NAME
 
 create-sops-age-key:
     mkdir -p ~/.config/sops/age
