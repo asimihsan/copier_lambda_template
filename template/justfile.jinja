@@ -71,14 +71,6 @@ sam-deploy:
     PROJECT_PREFIX=$(cd terraform/dev/{{ project_name }}_pre && terragrunt output -json project_prefix | jq -r '.')
     echo "Project prefix: $PROJECT_PREFIX"
     
-    # Build and tag Docker image
-    docker build --target final -t generated_lambda_template:latest .
-    docker tag generated_lambda_template:latest $REPO_URI:latest
-    
-    # Login to ECR and push the image
-    aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $REPO_URI
-    docker push $REPO_URI:latest
-    
     # Build and deploy with SAM (no guided mode)
     mise x aws-sam -- sam build --use-container --template-file sam/template.yaml
     mise x aws-sam -- sam deploy \
