@@ -30,7 +30,9 @@ func (r *Registry) Register(cmd string, handler SlackCommandHandler) {
 
 // Dispatch parses the command text and finds the appropriate handler.
 func (r *Registry) Dispatch(ctx context.Context, cmd slack.SlashCommand) (slack.Msg, error) {
-	handler, ok := r.handlers[cmd.Command]
+	command := cmd.Command[1:]
+
+	handler, ok := r.handlers[command]
 
 	if !ok {
 		r.logger.Warn().Msgf("Unknown command: %s", cmd.Command)
