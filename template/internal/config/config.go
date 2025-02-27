@@ -32,10 +32,9 @@ type ServerConfig struct {
 
 // DatabaseConfig holds configuration for the database
 type DatabaseConfig struct {
-	DynamoDBEndpoint  string
-	DynamoDBRegion    string
-	DynamoDBTableName string
-	IsLocal           bool // Added to flag local development mode
+	DynamoDBEndpoint string
+	DynamoDBRegion   string
+	IsLocal          bool // Added to flag local development mode
 }
 
 // LoadConfig loads the configuration from environment variables
@@ -52,10 +51,9 @@ func LoadConfig() (*Config, error) {
 			BasePath: getEnv("BASE_PATH", "/api/v1"),
 		},
 		Database: DatabaseConfig{
-			DynamoDBEndpoint:  getEnv("DYNAMODB_ENDPOINT", "http://localhost:8000"),
-			DynamoDBRegion:    getEnv("DYNAMODB_REGION", "us-east-1"),
-			DynamoDBTableName: getEnv("DYNAMODB_TABLE_NAME", "users"),
-			IsLocal:           getEnvAsBool("APP_LOCAL_MODE", false),
+			DynamoDBEndpoint: getEnv("DYNAMODB_ENDPOINT", "http://localhost:8000"),
+			DynamoDBRegion:   getEnv("DYNAMODB_REGION", "us-east-1"),
+			IsLocal:          getEnvAsBool("APP_LOCAL_MODE", false),
 		},
 		LogLevel: getEnv("LOG_LEVEL", "debug"),
 		Slack: SlackConfig{
@@ -98,6 +96,7 @@ func getEnvAsBool(key string, defaultValue bool) bool {
 	}
 
 	value, err := strconv.ParseBool(valueStr)
+
 	if err != nil {
 		return defaultValue
 	}
