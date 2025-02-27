@@ -14,6 +14,7 @@ resource "aws_secretsmanager_secret_version" "lambda_secrets" {
   secret_id = aws_secretsmanager_secret.lambda_secrets.id
   secret_string = jsonencode({
     SLACK_APP_TOKEN      = data.sops_file.lambda_secrets.data["SLACK_APP_TOKEN"],
+    SLACK_BOT_TOKEN      = data.sops_file.lambda_secrets.data["SLACK_BOT_TOKEN"],
     SLACK_SIGNING_SECRET = data.sops_file.lambda_secrets.data["SLACK_SIGNING_SECRET"],
   })
 }

@@ -30,7 +30,8 @@ func NewSlackHandler(
 ) *SlackHandler {
 	registry := slackcmd.NewRegistry(logger)
 
-	registry.Register("rotation", slackcmd.NewRotationCommand(rotationRepo))
+	slackClient := slack.New(slackConfig.BotToken)
+	registry.Register("rotation", slackcmd.NewRotationCommand(rotationRepo, slackClient))
 	registry.Register("override", slackcmd.NewOverrideCommand(overrideRepo))
 
 	return &SlackHandler{

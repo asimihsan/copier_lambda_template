@@ -2,47 +2,179 @@ package slack
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/slack-go/slack"
 
 	"{{ github_path }}/internal/repository"
 )
 
-// RotationCommand handles rotation-related commands (e.g. "show", "next")
+// RotationCommand handles rotation-related commands.
 type RotationCommand struct {
-	repo repository.RotationRepository
+	repo        repository.RotationRepository
+	slackClient *slack.Client // used for querying user info
 }
 
 var _ SlackCommandHandler = (*RotationCommand)(nil)
 
-func NewRotationCommand(repo repository.RotationRepository) *RotationCommand {
+func NewRotationCommand(repo repository.RotationRepository, slackClient *slack.Client) *RotationCommand {
 	return &RotationCommand{
-		repo: repo,
+		repo:        repo,
+		slackClient: slackClient,
 	}
 }
 
 func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand) (slack.Msg, error) {
 	args := strings.TrimSpace(cmd.Text)
+	fields := strings.Fields(args)
 
-	switch strings.ToLower(args) {
-	case "", "show":
-		// For MVP, return a stubbed rotation status.
+	if len(fields) == 0 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         "Usage: /rotation <create|show|next> [parameters]",
+		}, nil
+	}
+
+	switch strings.ToLower(fields[0]) {
+	case "create":
+		// Expected syntax: /rotation create <label> <frequency> [user_ids...]
+		if len(fields) < 3 { //nolint:mnd
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         "Usage: /rotation create <label> <frequency> [user_ids...]",
+			}, nil
+		}
+
+		label := fields[1]
+		frequency := fields[2]
+
+		var rotationOrder []string
+		if len(fields) > 3 { //nolint:mnd
+			rotationOrder = fields[3:]
+		} else {
+			rotationOrder = []string{cmd.UserID} // default to creator only
+		}
+
+		// Retrieve creator's Slack info.
+		user, err := c.slackClient.GetUserInfo(cmd.UserID)
+		if err != nil {
+			return slack.Msg{}, fmt.Errorf("failed to fetch creator info: %w", err)
+		}
+
+		// Build the new rotation record.
+		newRotation := repository.Rotation{
+			CreatorTeamID:    cmd.TeamID,
+			RotationLabel:    label,
+			Frequency:        frequency,
+			CurrentOwner:     cmd.UserID,
+			RotationOrder:    rotationOrder,
+			LastRotationDate: time.Now(),
+			NextRotationDate: calculateNextRotationDate(time.Now(), frequency),
+			CreatorUserID:    cmd.UserID,
+			CreatorUserName:  user.Name,
+		}
+
+		if err := c.repo.CreateRotation(ctx, newRotation); err != nil {
+			return slack.Msg{}, fmt.Errorf("failed to create rotation: %w", err)
+		}
+
 		return slack.Msg{
 			ResponseType: slack.ResponseTypeInChannel,
-			Text:         "Rotation schedule: Current owner is @user1, next in line: @user2.",
+			Text:         fmt.Sprintf("Rotation `%s` created with frequency %s and owner <@%s>.", label, frequency, cmd.UserID),
+		}, nil
+
+	case "show":
+		// Expected syntax: /rotation show <label>
+		if len(fields) < 2 { //nolint:mnd
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         "Usage: /rotation show <label>",
+			}, nil
+		}
+
+		label := fields[1]
+		rotation, err := c.repo.GetRotation(ctx, cmd.TeamID, label)
+		if err != nil {
+			return slack.Msg{}, fmt.Errorf("failed to retrieve rotation: %w", err)
+		}
+		if rotation == nil {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Rotation `%s` not found.", label),
+			}, nil
+		}
+
+		// Format a response showing the current and next owners.
+		responseText := fmt.Sprintf("Rotation `%s`:\n• Current owner: <@%s>\n• Next in line: <@%s>",
+			label, rotation.CurrentOwner, nextOwner(rotation))
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeInChannel,
+			Text:         responseText,
 		}, nil
 
 	case "next":
+		// Expected syntax: /rotation next <label>
+		if len(fields) < 2 { //nolint:mnd
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         "Usage: /rotation next <label>",
+			}, nil
+		}
+		label := fields[1]
+		rotation, err := c.repo.GetRotation(ctx, cmd.TeamID, label)
+		if err != nil {
+			return slack.Msg{}, fmt.Errorf("failed to retrieve rotation: %w", err)
+		}
+		if rotation == nil {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Rotation `%s` not found.", label),
+			}, nil
+		}
 		return slack.Msg{
 			ResponseType: slack.ResponseTypeInChannel,
-			Text:         "Next deployment owner is @user2.",
+			Text:         fmt.Sprintf("Next deployment owner for `%s` is <@%s>.", label, nextOwner(rotation)),
 		}, nil
 
 	default:
 		return slack.Msg{
 			ResponseType: slack.ResponseTypeEphemeral,
-			Text:         "Invalid rotation command. Use `/rotation show` or `/rotation next`.",
+			Text:         "Invalid rotation command. Use `/rotation create`, `/rotation show` or `/rotation next`.",
 		}, nil
 	}
+}
+
+// calculateNextRotationDate is similar to the helper in the repository.
+func calculateNextRotationDate(lastDate time.Time, frequency string) time.Time {
+	switch frequency {
+	case "daily":
+		return lastDate.AddDate(0, 0, 1) //nolint:mnd
+	case "weekly":
+		return lastDate.AddDate(0, 0, 7) //nolint:mnd
+	case "biweekly":
+		return lastDate.AddDate(0, 0, 14) //nolint:mnd
+	case "monthly":
+		return lastDate.AddDate(0, 1, 0) //nolint:mnd
+	default:
+		return lastDate.AddDate(0, 0, 7) //nolint:mnd
+	}
+}
+
+// nextOwner returns the next owner in the rotation.
+func nextOwner(r *repository.Rotation) string {
+	currentIndex := -1
+	for i, owner := range r.RotationOrder {
+		if owner == r.CurrentOwner {
+			currentIndex = i
+			break
+		}
+	}
+	if currentIndex == -1 {
+		// if not found, return the first user
+		return r.RotationOrder[0]
+	}
+	nextIndex := (currentIndex + 1) % len(r.RotationOrder)
+	return r.RotationOrder[nextIndex]
 }

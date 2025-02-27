@@ -2,6 +2,10 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
 Parameters:
+  AwsRegion:
+    Type: String
+    Description: AWS Region
+
   LambdaRole:
     Type: String
     Description: IAM Role ARN for Lambda execution
@@ -35,6 +39,7 @@ Resources:
       Timeout: 10
       Environment:
         Variables:
+          AWS_REGION: !Ref AwsRegion
           SECRETS_ARN: !Ref SecretsArn
           OVERRIDE_TABLE_NAME: !Ref OverrideTableName
           ROTATION_TABLE_NAME: !Ref RotationTableName

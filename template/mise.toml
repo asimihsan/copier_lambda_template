@@ -1,9 +1,20 @@
 [tools]
+"go:github.com/incu6us/goimports-reviser/v3" = "latest"
+age = "latest"
+aws-cli = "latest"
 aws-sam = "latest"
+aws-vault = "latest"
+fd = "latest"
 go = "prefix:1.24"
 golangci-lint = "latest"
+jq = "latest"
+just = "latest"
 oapi-codegen = "latest"
+opentofu = "latest"
 python = "prefix:3.12"
+sops = "latest"
+terragrunt = "latest"
+tflint = "latest"
 
 [settings]
 experimental = true

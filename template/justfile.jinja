@@ -54,21 +54,21 @@ terraform-init:
     set -euo pipefail
     export TF_STATE_ENCRYPTION_PASSPHRASE=$(op read "{{ tofu_password_1password_ref}}")
     export SOPS_AGE_KEY_FILE=~/.config/sops/age/key.txt
-    cd terraform && terragrunt run-all init --tf-path tofu --tf-forward-stdout
+    cd terraform && mise x -- terragrunt run-all init --tf-path tofu --tf-forward-stdout
 
 terraform-dev-plan:
     #!/usr/bin/env bash
     set -euo pipefail
     export TF_STATE_ENCRYPTION_PASSPHRASE=$(op read "{{ tofu_password_1password_ref}}")
     export SOPS_AGE_KEY_FILE=~/.config/sops/age/key.txt
-    cd terraform/dev && terragrunt run-all plan --tf-path tofu --tf-forward-stdout --queue-include-external
+    cd terraform/dev && mise x -- terragrunt run-all plan --tf-path tofu --tf-forward-stdout --queue-include-external
 
 terraform-dev-apply:
     #!/usr/bin/env bash
     set -euo pipefail
     export TF_STATE_ENCRYPTION_PASSPHRASE=$(op read "{{ tofu_password_1password_ref}}")
     export SOPS_AGE_KEY_FILE=~/.config/sops/age/key.txt
-    cd terraform/dev && terragrunt run-all apply --tf-path tofu --tf-forward-stdout --queue-include-external
+    cd terraform/dev && mise x -- terragrunt run-all apply --tf-path tofu --tf-forward-stdout --queue-include-external
 
 sam-deploy:
     #!/usr/bin/env bash
@@ -76,12 +76,12 @@ sam-deploy:
     export SOPS_AGE_KEY_FILE=~/.config/sops/age/key.txt
 
     echo "Retrieving ECR repository URL..."
-    REPO_URI=$(cd terraform/infrastructure && terragrunt output --tf-path tofu -json | jq -r '.repository_url.value')
+    REPO_URI=$(cd terraform/infrastructure && mise x -- terragrunt output --tf-path tofu -json | jq -r '.repository_url.value')
     echo "ECR repository URL: $REPO_URI"
 
     # Get all outputs from lambda template directory at once
     echo "Retrieving lambda template outputs..."
-    LAMBDA_OUTPUTS=$(cd terraform/dev/generated_lambda_template_pre && terragrunt output --tf-path tofu -json)
+    LAMBDA_OUTPUTS=$(cd terraform/dev/generated_lambda_template_pre && mise x -- terragrunt output --tf-path tofu -json)
 
     # Extract individual values using jq with .value
     LAMBDA_EXEC_ROLE=$(echo "$LAMBDA_OUTPUTS" | jq -r '.lambda_exec_role.value')
@@ -110,6 +110,7 @@ sam-deploy:
         --region us-west-2 \
         --image-repository $REPO_URI \
         --parameter-overrides \
+            AwsRegion=us-west-2 \
             LambdaRole=$LAMBDA_EXEC_ROLE \
             ProjectPrefix=$PROJECT_PREFIX \
             SecretsArn=$SECRETS_ARN \
@@ -118,4 +119,9 @@ sam-deploy:
 
 create-sops-age-key:
     mkdir -p ~/.config/sops/age
-    age-keygen -o ~/.config/sops/age/key.txt
+    mise x -- age-keygen -o ~/.config/sops/age/key.txt
+
+edit-sops-secrets:
+    #!/usr/bin/env bash
+    export SOPS_AGE_KEY_FILE=~/.config/sops/age/key.txt
+    mise x -- sops secrets/lambda-secrets.yaml

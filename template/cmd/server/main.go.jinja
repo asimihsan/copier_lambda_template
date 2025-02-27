@@ -26,16 +26,16 @@ func main() {
 				EnvVars: []string{"APP_LOCAL_MODE"},
 			},
 			&cli.StringFlag{
+				Name:    "region",
+				Usage:   "AWS region",
+				Value:   "us-east-1",
+				EnvVars: []string{"AWS_REGION"},
+			},
+			&cli.StringFlag{
 				Name:    "dynamodb-endpoint",
 				Usage:   "DynamoDB endpoint URL (empty for AWS service endpoint)",
 				Value:   "http://localhost:8000",
 				EnvVars: []string{"DYNAMODB_ENDPOINT"},
-			},
-			&cli.StringFlag{
-				Name:    "dynamodb-region",
-				Usage:   "AWS region for DynamoDB",
-				Value:   "us-east-1",
-				EnvVars: []string{"DYNAMODB_REGION"},
 			},
 			&cli.StringFlag{
 				Name:    "dynamodb-table",
@@ -95,7 +95,7 @@ func run(c *cli.Context) error {
 	// Create DynamoDB client and repositories.
 	dynamoClient, err := repository.NewDynamoDBClient(
 		cfg.Database.DynamoDBEndpoint,
-		cfg.Database.DynamoDBRegion,
+		cfg.Region,
 		cfg.Database.IsLocal,
 	)
 

@@ -16,14 +16,16 @@ import (
 
 // SlackConfig holds configuration for Slack integration.
 type SlackConfig struct {
-	SigningSecret     string
+	AppToken          string
 	BotToken          string
+	SigningSecret     string
 	OverrideTableName string
 	RotationTableName string
 }
 
 // Config holds all configuration for the application, including Slack settings.
 type Config struct {
+	Region   string
 	Server   ServerConfig
 	Database DatabaseConfig
 	LogLevel string
@@ -39,7 +41,6 @@ type ServerConfig struct {
 // DatabaseConfig holds configuration for the database
 type DatabaseConfig struct {
 	DynamoDBEndpoint string
-	DynamoDBRegion   string
 	IsLocal          bool // Added to flag local development mode
 }
 
@@ -52,13 +53,13 @@ func LoadConfig() (*Config, error) {
 	}
 
 	cfg := &Config{
+		Region: getEnv("AWS_REGION", "us-east-1"),
 		Server: ServerConfig{
 			Port:     getEnvAsInt("PORT", 8080), //nolint:mnd
 			BasePath: getEnv("BASE_PATH", "/api/v1"),
 		},
 		Database: DatabaseConfig{
 			DynamoDBEndpoint: getEnv("DYNAMODB_ENDPOINT", "http://localhost:8000"),
-			DynamoDBRegion:   getEnv("DYNAMODB_REGION", "us-east-1"),
 			IsLocal:          getEnvAsBool("APP_LOCAL_MODE", false),
 		},
 		LogLevel: getEnv("LOG_LEVEL", "debug"),
@@ -84,6 +85,14 @@ func LoadConfig() (*Config, error) {
 
 	if !ok {
 		return nil, fmt.Errorf("missing SLACK_APP_TOKEN in Secrets Manager")
+	}
+
+	cfg.Slack.AppToken = token
+
+	token, ok = secrets["SLACK_BOT_TOKEN"]
+
+	if !ok {
+		return nil, fmt.Errorf("missing SLACK_BOT_TOKEN in Secrets Manager")
 	}
 
 	cfg.Slack.BotToken = token
