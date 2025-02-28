@@ -108,8 +108,11 @@ func run(c *cli.Context) error {
 	rotationRepo := repository.NewDynamoDBRotationRepository(dynamoClient, cfg.Slack.RotationTableName)
 	scheduleRepo := repository.NewDynamoDBRotationScheduleRepo(dynamoClient, cfg.Slack.RotationScheduleTableName)
 
-	slackHandler := handler.NewSlackHandler(overrideRepo, rotationRepo, cfg.Slack, log.Logger)
+	// Create the tick handler first
 	tickHandler := handler.NewTickHandler(scheduleRepo, rotationRepo, handler.NewSlackClient(cfg.Slack.BotToken))
+	
+	// Now pass tickHandler to NewSlackHandler
+	slackHandler := handler.NewSlackHandler(overrideRepo, rotationRepo, tickHandler, cfg.Slack, log.Logger)
 
 	compositeHandler := &handler.CompositeHandler{
 		Slack: slackHandler,

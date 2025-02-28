@@ -19,7 +19,8 @@ type Rotation struct {
 	NextRotationDate time.Time `dynamodbav:"next_rotation_date" json:"next_rotation_date"`
 	CreatorUserID    string    `dynamodbav:"creator_user_id" json:"creator_user_id"`
 	CreatorUserName  string    `dynamodbav:"creator_user_name" json:"creator_user_name"`
-	// Added version for optimistic concurrency.
+    SlackChannelID   string    `dynamodbav:"slack_channel_id,omitempty" json:"slack_channel_id,omitempty"`
+	// Version for optimistic concurrency.
 	Version int `dynamodbav:"version" json:"version"`
 }
 

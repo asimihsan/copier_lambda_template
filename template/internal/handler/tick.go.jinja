@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,8 +11,10 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/slack-go/slack"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"{{ github_path }}/internal/repository"
+	"{{ github_path }}/internal/tick"
 )
 
 // SlackNotifier defines an interface for sending notifications to Slack
@@ -60,10 +63,51 @@ func NewTickHandler(
 	}
 }
 
-// PostTick is the HTTP handler for processing tick events.
-func (h *TickHandler) PostTick(c echo.Context) error {
-	ctx := c.Request().Context()
+// ProcessTick processes scheduled tick events.
+// This implements the tick.Processor interface.
+// teamID: if non-empty, perform a nuclear update for that team.
+func (h *TickHandler) ProcessTick(ctx context.Context, teamID string) error {
 	now := time.Now().UTC()
+
+	// --- NUCLEAR OPTION: Force update rotations if teamID is provided ---
+	if teamID != "" {
+		var lastEvaluatedKey map[string]types.AttributeValue
+		for {
+			rotations, lek, err := h.RotationRepo.ListRotations(ctx, teamID, 100, lastEvaluatedKey)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to list rotations for nuclear update")
+				break
+			}
+
+			for _, rotation := range rotations {
+				// If the rotation is overdue, force advance it
+				if now.After(rotation.NextRotationDate) {
+					log.Info().Str("rotation", rotation.RotationLabel).Msg("Forcing rotation advancement (nuclear option)")
+					if err := h.RotationRepo.AdvanceRotation(ctx, teamID, rotation.RotationLabel); err != nil {
+						log.Error().Err(err).Str("rotation", rotation.RotationLabel).Msg("Failed to force advance rotation")
+					} else {
+						// Optionally, re-fetch the updated rotation to get the new owner and Slack channel
+						updatedRotation, errGet := h.RotationRepo.GetRotation(ctx, teamID, rotation.RotationLabel)
+						if errGet == nil && updatedRotation != nil && updatedRotation.SlackChannelID != "" {
+							forcedMsg := fmt.Sprintf("Forced advancement: rotation `%s` new owner is <@%s>.", updatedRotation.RotationLabel, updatedRotation.CurrentOwner)
+							if errNotify := h.SlackNotifier.NotifyChannel(updatedRotation.SlackChannelID, forcedMsg); errNotify != nil {
+								log.Error().Err(errNotify).Str("rotation", updatedRotation.RotationLabel).Msg("Failed to notify forced advancement")
+							}
+						}
+					}
+				}
+			}
+
+			if lek == nil {
+				break
+			}
+			lastEvaluatedKey = lek
+		}
+	} else {
+		log.Info().Msg("Skipping nuclear option; no teamID provided")
+	}
+	// --- End Nuclear Option ---
+
 	hourKey := now.Format("2006-01-02T15")
 
 	log.Info().Str("hourKey", hourKey).Msg("Processing tick events")
@@ -71,7 +115,7 @@ func (h *TickHandler) PostTick(c echo.Context) error {
 	events, err := h.ScheduleRepo.GetEventsByHour(ctx, hourKey)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get scheduled events")
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to get scheduled events")
+		return fmt.Errorf("failed to get scheduled events: %w", err)
 	}
 
 	log.Info().Int("eventCount", len(events)).Msg("Found scheduled events")
@@ -113,18 +157,42 @@ func (h *TickHandler) PostTick(c echo.Context) error {
 			continue
 		}
 
-		if err := h.SlackNotifier.NotifyChannel(event.SlackChannelID, msg); err != nil {
+		// Determine the Slack channel to notify.
+		// Prefer the channel set on the rotation if available.
+		teamID, rotationLabel := extractRotationComponents(event.RotationID)
+		rotation, err := h.RotationRepo.GetRotation(ctx, teamID, rotationLabel)
+		var channelID string
+		if err == nil && rotation != nil && rotation.SlackChannelID != "" {
+			channelID = rotation.SlackChannelID
+		} else {
+			// Fall back to the channel from the event.
+			channelID = event.SlackChannelID
+		}
+		if channelID == "" {
+			log.Info().Str("rotationID", event.RotationID).Msg("No Slack channel configured; skipping notification")
+			continue
+		}
+
+		if err := h.SlackNotifier.NotifyChannel(channelID, msg); err != nil {
 			log.Error().
 				Err(err).
-				Str("channelID", event.SlackChannelID).
+				Str("channelID", channelID).
 				Msg("Failed to send Slack notification")
 		} else {
 			log.Info().
-				Str("channelID", event.SlackChannelID).
+				Str("channelID", channelID).
 				Msg("Sent Slack notification")
 		}
 	}
+	return nil
+}
 
+// PostTick is the HTTP handler for processing tick events.
+func (h *TickHandler) PostTick(c echo.Context) error {
+	ctx := c.Request().Context()
+	if err := h.ProcessTick(ctx, ""); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
 	return c.NoContent(http.StatusOK)
 }
 
@@ -138,3 +206,6 @@ func extractRotationComponents(rotationID string) (teamID, rotationLabel string)
 	}
 	return parts[0], parts[1]
 }
+
+// Ensure TickHandler implements tick.Processor
+var _ tick.Processor = (*TickHandler)(nil)

@@ -25,6 +25,7 @@ type SlackHandler struct {
 func NewSlackHandler(
 	overrideRepo repository.OverrideRepository,
 	rotationRepo repository.RotationRepository,
+	tickHandler *TickHandler,
 	slackConfig config.SlackConfig,
 	logger zerolog.Logger,
 ) *SlackHandler {
@@ -33,6 +34,7 @@ func NewSlackHandler(
 	slackClient := slack.New(slackConfig.BotToken)
 	registry.Register("rotation", slackcmd.NewRotationCommand(rotationRepo, slackClient))
 	registry.Register("override", slackcmd.NewOverrideCommand(overrideRepo))
+	registry.Register("tick", slackcmd.NewTickCommand(tickHandler, logger))
 
 	return &SlackHandler{
 		rotationRepo: rotationRepo,
