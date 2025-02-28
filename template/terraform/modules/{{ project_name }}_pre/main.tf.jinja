@@ -105,6 +105,7 @@ resource "aws_iam_policy" "lambda_dynamodb_policy" {
         Resource = [
           aws_dynamodb_table.deployment_rotation.arn,
           aws_dynamodb_table.override_requests.arn,
+          aws_dynamodb_table.rotation_schedule.arn,
         ]
       }
     ]
