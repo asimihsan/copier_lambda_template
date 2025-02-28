@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/samber/lo"
 	"github.com/slack-go/slack"
 
 	"{{ github_path }}/internal/tick"
@@ -29,8 +31,10 @@ type RotationSubCommand interface {
 
 // RotationCommand handles rotation-related commands.
 type RotationCommand struct {
-	repo        repository.RotationRepository
-	slackClient *slack.Client // used for querying user info
+	repo          repository.RotationRepository
+	slackClient   *slack.Client // used for querying user info
+	tickProcessor tick.Processor
+	logger        zerolog.Logger
 	
 	// Registry of subcommands indexed by command name
 	commands map[string]RotationSubCommand
@@ -38,11 +42,13 @@ type RotationCommand struct {
 
 var _ SlackCommandHandler = (*RotationCommand)(nil)
 
-func NewRotationCommand(repo repository.RotationRepository, slackClient *slack.Client) *RotationCommand {
+func NewRotationCommand(repo repository.RotationRepository, slackClient *slack.Client, tickProcessor tick.Processor, logger zerolog.Logger) *RotationCommand {
 	cmd := &RotationCommand{
-		repo:        repo,
-		slackClient: slackClient,
-		commands:    make(map[string]RotationSubCommand),
+		repo:          repo,
+		slackClient:   slackClient,
+		tickProcessor: tickProcessor,
+		logger:        logger,
+		commands:      make(map[string]RotationSubCommand),
 	}
 	
 	// Register all subcommands
@@ -65,6 +71,8 @@ func (c *RotationCommand) registerSubCommands() {
 		NewSetOwnerCommand(c.repo, c.slackClient),
 		NewListCommand(c.repo),
 		NewSetChannelCommand(c.repo),
+		NewTickCommand(c.tickProcessor, c.logger), // NEW: Added TickCommand subcommand.
+		NewStartCommand(c.repo), // NEW: Added Start command to set rotation start
 	}
 	
 	for _, cmd := range subCommands {
@@ -95,8 +103,10 @@ func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 		}
 
 		// Build command list text
+		cmds := lo.Keys(c.commands)
+		sort.Strings(cmds)
 		var cmdList string
-		for name := range c.commands {
+		for _, name := range cmds {
 			cmdList += fmt.Sprintf("• `%s`\n", name)
 		}
 		
@@ -866,6 +876,15 @@ func NewSetChannelCommand(repo repository.RotationRepository) *SetChannelCommand
 	return &SetChannelCommand{repo: repo}
 }
 
+// StartCommand sets the rotation's start date to today at midnight UTC.
+type StartCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewStartCommand(repo repository.RotationRepository) *StartCommand {
+	return &StartCommand{repo: repo}
+}
+
 func (c *SetChannelCommand) Name() string {
 	return "setchannel"
 }
@@ -944,6 +963,77 @@ func (c *SetChannelCommand) Execute(ctx context.Context, cmd slack.SlashCommand,
 	return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: responseText}, nil
 }
 
+func (c *StartCommand) Name() string {
+	return "start"
+}
+
+func (c *StartCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Start Rotation Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn",
+				"*Usage:* `/rotation start <label> [YYYY-MM-DD]`\nSets the rotation start date to the specified date (at midnight UTC). If no date is provided, today is used.",
+				false, false,
+			),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *StartCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	// Expect 1 or 2 arguments: label and optional YYYY-MM-DD.
+	if len(args) < 1 || len(args) > 2 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+
+	label := args[0]
+	var startDate time.Time
+
+	if len(args) == 2 {
+		// Attempt to parse the provided date.
+		parsed, err := time.Parse("2006-01-02", args[1])
+		if err != nil {
+			return slack.Msg{ //nolint:nilerr
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Invalid date format: `%s`. Please use YYYY-MM-DD.", args[1]),
+			}, nil
+		}
+		startDate = parsed.UTC().Truncate(24 * time.Hour)
+	} else {
+		startDate = time.Now().UTC().Truncate(24 * time.Hour)
+	}
+
+	rotation, err := c.repo.GetRotation(ctx, cmd.TeamID, label)
+	if err != nil || rotation == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	rotation.LastRotationDate = startDate
+	rotation.NextRotationDate = calculateNextRotationDate(startDate, rotation.Frequency)
+
+	if err := c.repo.UpsertRotation(ctx, *rotation); err != nil {
+		return slack.Msg{}, err
+	}
+
+	var responseText string
+	if len(args) == 2 {
+		responseText = fmt.Sprintf("Rotation `%s` start set to %s at midnight UTC.", label, startDate.Format("2006-01-02"))
+	} else {
+		responseText = fmt.Sprintf("Rotation `%s` start set to today at midnight UTC.", label)
+	}
+
+	return slack.Msg{
+		ResponseType: slack.ResponseTypeInChannel,
+		Text:         responseText,
+	}, nil
+}
+
 // TickCommand handles the tick subcommand.
 type TickCommand struct {
 	tickProcessor tick.Processor
@@ -959,9 +1049,28 @@ func NewTickCommand(tickProcessor tick.Processor, logger zerolog.Logger) *TickCo
 	}
 }
 
-func (c *TickCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand) (slack.Msg, error) {
-	// Use the optional teamID provided in the command text (trimmed)
-	teamID := strings.TrimSpace(cmd.TeamID)
+func (c *TickCommand) Name() string {
+	return "tick"
+}
+
+func (c *TickCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Tick Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation tick [teamID]`\n(Optional teamID to trigger the nuclear tick)", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *TickCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	var teamID string
+	if len(args) > 0 {
+		teamID = strings.TrimSpace(args[0])
+	}
 	err := c.tickProcessor.ProcessTick(ctx, teamID)
 	if err != nil {
 		return slack.Msg{}, fmt.Errorf("tick error: %w", err)
@@ -970,6 +1079,11 @@ func (c *TickCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand)
 		ResponseType: slack.ResponseTypeInChannel,
 		Text:         "Tick executed successfully.",
 	}, nil
+}
+
+func (c *TickCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand) (slack.Msg, error) {
+	args := strings.Fields(strings.TrimSpace(cmd.Text))
+	return c.Execute(ctx, cmd, args)
 }
 
 // Helper functions
