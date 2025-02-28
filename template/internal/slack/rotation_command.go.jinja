@@ -13,330 +13,187 @@ import (
 	"{{ github_path }}/internal/repository"
 )
 
+// RotationSubCommand defines the interface for all rotation subcommands
+type RotationSubCommand interface {
+	// Name returns the command name (e.g., "create", "show", "list", etc.)
+	Name() string
+
+	// Execute runs the command with provided arguments
+	Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error)
+
+	// HelpBlocks returns help blocks for the usage information of this command
+	HelpBlocks() []slack.Block
+}
+
 // RotationCommand handles rotation-related commands.
 type RotationCommand struct {
 	repo        repository.RotationRepository
 	slackClient *slack.Client // used for querying user info
+	
+	// Registry of subcommands indexed by command name
+	commands map[string]RotationSubCommand
 }
 
 var _ SlackCommandHandler = (*RotationCommand)(nil)
 
 func NewRotationCommand(repo repository.RotationRepository, slackClient *slack.Client) *RotationCommand {
-	return &RotationCommand{
+	cmd := &RotationCommand{
+		repo:        repo,
+		slackClient: slackClient,
+		commands:    make(map[string]RotationSubCommand),
+	}
+	
+	// Register all subcommands
+	cmd.registerSubCommands()
+	
+	return cmd
+}
+
+// registerSubCommands initializes and registers all subcommands
+func (c *RotationCommand) registerSubCommands() {
+	subCommands := []RotationSubCommand{
+		NewCreateCommand(c.repo, c.slackClient),
+		NewShowCommand(c.repo),
+		NewNextCommand(c.repo),
+		NewAddCommand(c.repo),
+		NewRemoveCommand(c.repo),
+		NewMoveCommand(c.repo),
+		NewReorderCommand(c.repo),
+		NewSetFrequencyCommand(c.repo),
+		NewSetOwnerCommand(c.repo, c.slackClient),
+		NewListCommand(c.repo),
+	}
+	
+	for _, cmd := range subCommands {
+		c.commands[cmd.Name()] = cmd
+	}
+}
+
+func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand) (slack.Msg, error) {
+	args := strings.Fields(strings.TrimSpace(cmd.Text))
+
+	if len(args) == 0 {
+		// Show general help with all available commands
+		blocks := []slack.Block{
+			slack.NewHeaderBlock(
+				slack.NewTextBlockObject("plain_text", "Usage Instructions", false, false),
+			),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation <command> [parameters]`", false, false),
+				nil,
+				nil,
+			),
+			slack.NewDividerBlock(),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", "*Available Commands:*", false, false),
+				nil,
+				nil,
+			),
+		}
+
+		// Build command list text
+		var cmdList string
+		for name := range c.commands {
+			cmdList += fmt.Sprintf("• `%s`\n", name)
+		}
+		
+		blocks = append(blocks, 
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", cmdList, false, false),
+				nil,
+				nil,
+			),
+			slack.NewDividerBlock(),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", "For more details on each command, use `/rotation help <command>` or run the command without parameters.", false, false),
+				nil,
+				nil,
+			),
+		)
+
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks: slack.Blocks{BlockSet: blocks},
+		}, nil
+	}
+
+	// Check if this is a help request for a specific command
+	if strings.ToLower(args[0]) == "help" && len(args) > 1 {
+		cmdName := strings.ToLower(args[1])
+		if subCmd, ok := c.commands[cmdName]; ok {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Blocks: slack.Blocks{BlockSet: subCmd.HelpBlocks()},
+			}, nil
+		}
+		return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Unknown command: " + cmdName}, nil
+	}
+
+	// Execute the requested command
+	cmdName := strings.ToLower(args[0])
+	if subCmd, ok := c.commands[cmdName]; ok {
+		return subCmd.Execute(ctx, cmd, args[1:])
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Invalid rotation command."}, nil
+}
+
+// Individual command implementations
+
+// CreateCommand handles the "create" subcommand
+type CreateCommand struct {
+	repo        repository.RotationRepository
+	slackClient *slack.Client
+}
+
+func NewCreateCommand(repo repository.RotationRepository, slackClient *slack.Client) *CreateCommand {
+	return &CreateCommand{
 		repo:        repo,
 		slackClient: slackClient,
 	}
 }
 
-func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand) (slack.Msg, error) {
-	args := strings.TrimSpace(cmd.Text)
-	fields := strings.Fields(args)
+func (c *CreateCommand) Name() string {
+	return "create"
+}
 
-	if len(fields) == 0 {
-		msg := slack.Msg{
-			ResponseType: slack.ResponseTypeEphemeral,
-			Blocks: slack.Blocks{
-				BlockSet: []slack.Block{
-					slack.NewHeaderBlock(
-						slack.NewTextBlockObject("plain_text", "Usage Instructions", false, false),
-					),
-					slack.NewSectionBlock(
-						slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation <command> [parameters]`", false, false),
-						nil,
-						nil,
-					),
-					slack.NewDividerBlock(),
-					slack.NewSectionBlock(
-						slack.NewTextBlockObject("mrkdwn", "*Available Commands:*", false, false),
-						nil,
-						nil,
-					),
-					slack.NewSectionBlock(
-						slack.NewTextBlockObject("mrkdwn", "• `create` - Create a new rotation\n• `show` - Display the current rotation\n• `next` - Advance to the next person in the rotation\n• `add` - Add a person to the rotation\n• `remove` - Remove a person from the rotation\n• `move` - Move a person to a different position\n• `reorder` - Reorder the rotation\n• `setfrequency` - Set how often the rotation changes\n• `setowner` - Assign a new owner to the rotation", false, false),
-						nil,
-						nil,
-					),
-					slack.NewDividerBlock(),
-					slack.NewSectionBlock(
-						slack.NewTextBlockObject("mrkdwn", "For more details on each command, use `/rotation help <command>`.", false, false),
-						nil,
-						nil,
-					),
-				},
-			},
-		}
-
-		return msg, nil
-	}
-
-	switch strings.ToLower(fields[0]) {
-	case "create":
-		if len(fields) < 3 {
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Blocks: slack.Blocks{
-					BlockSet: []slack.Block{
-						slack.NewHeaderBlock(
-							slack.NewTextBlockObject("plain_text", "Create Rotation Help", false, false),
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation create <label> <frequency> [@user...]`", false, false),
-							nil,
-							nil,
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "Valid frequencies: daily, weekly, biweekly, monthly.\nExample: `/rotation create devRotation weekly <@U12345678>`", false, false),
-							nil,
-							nil,
-						),
-					},
-				},
-			}, nil
-		}
-
-		return c.createRotation(ctx, cmd, fields[1], fields[2], fields[3:])
-
-	case "show":
-		if len(fields) < 2 {
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Blocks: slack.Blocks{
-					BlockSet: []slack.Block{
-						slack.NewHeaderBlock(
-							slack.NewTextBlockObject("plain_text", "Show Rotation Help", false, false),
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation show <label>`", false, false),
-							nil,
-							nil,
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "Example: `/rotation show devRotation`", false, false),
-							nil,
-							nil,
-						),
-					},
-				},
-			}, nil
-		}
-
-		return c.showRotation(ctx, cmd.TeamID, fields[1])
-
-	case "next":
-		if len(fields) < 2 {
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Blocks: slack.Blocks{
-					BlockSet: []slack.Block{
-						slack.NewHeaderBlock(
-							slack.NewTextBlockObject("plain_text", "Next Rotation Help", false, false),
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation next <label>`", false, false),
-							nil,
-							nil,
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "Advances to the next rotation member and returns the updated owner.", false, false),
-							nil,
-							nil,
-						),
-					},
-				},
-			}, nil
-		}
-
-		return c.nextRotation(ctx, cmd.TeamID, fields[1])
-
-	case "add":
-		if len(fields) < 3 {
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Blocks: slack.Blocks{
-					BlockSet: []slack.Block{
-						slack.NewHeaderBlock(
-							slack.NewTextBlockObject("plain_text", "Add Users Help", false, false),
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation add <label> <@user...>`", false, false),
-							nil,
-							nil,
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "Adds one or more users to the rotation.\nExample: `/rotation add devRotation <@U12345678> <@U87654321>`", false, false),
-							nil,
-							nil,
-						),
-					},
-				},
-			}, nil
-		}
-
-		return c.modifyRotationMembers(ctx, cmd.TeamID, fields[1], fields[2:], "add")
-
-	case "remove":
-		if len(fields) < 3 {
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Blocks: slack.Blocks{
-					BlockSet: []slack.Block{
-						slack.NewHeaderBlock(
-							slack.NewTextBlockObject("plain_text", "Remove Users Help", false, false),
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation remove <label> <@user...>`", false, false),
-							nil,
-							nil,
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "Removes one or more users from the rotation.\nExample: `/rotation remove devRotation <@U12345678>`", false, false),
-							nil,
-							nil,
-						),
-					},
-				},
-			}, nil
-		}
-
-		return c.modifyRotationMembers(ctx, cmd.TeamID, fields[1], fields[2:], "remove")
-
-	case "move":
-		if len(fields) != 4 {
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Blocks: slack.Blocks{
-					BlockSet: []slack.Block{
-						slack.NewHeaderBlock(
-							slack.NewTextBlockObject("plain_text", "Move User Help", false, false),
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation move <label> <@user> <position>`", false, false),
-							nil,
-							nil,
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "Moves the specified user to a new position (0-indexed).\nExample: `/rotation move devRotation <@U12345678> 0`", false, false),
-							nil,
-							nil,
-						),
-					},
-				},
-			}, nil
-		}
-
-		return c.moveRotationMember(ctx, cmd.TeamID, fields[1], fields[2], fields[3])
-
-	case "reorder":
-		if len(fields) < 3 {
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Blocks: slack.Blocks{
-					BlockSet: []slack.Block{
-						slack.NewHeaderBlock(
-							slack.NewTextBlockObject("plain_text", "Reorder Rotation Help", false, false),
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation reorder <label> <@user...>`", false, false),
-							nil,
-							nil,
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "Reorders the entire rotation. You must provide all current members in the new order.\nExample: `/rotation reorder devRotation <@U12345678> <@U87654321>`", false, false),
-							nil,
-							nil,
-						),
-					},
-				},
-			}, nil
-		}
-
-		return c.reorderRotation(ctx, cmd.TeamID, fields[1], fields[2:])
-
-	case "setfrequency":
-		if len(fields) != 3 {
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Blocks: slack.Blocks{
-					BlockSet: []slack.Block{
-						slack.NewHeaderBlock(
-							slack.NewTextBlockObject("plain_text", "Set Frequency Help", false, false),
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation setfrequency <label> <frequency>`", false, false),
-							nil,
-							nil,
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "Frequency options: daily, weekly, biweekly, monthly.\nExample: `/rotation setfrequency devRotation weekly`", false, false),
-							nil,
-							nil,
-						),
-					},
-				},
-			}, nil
-		}
-
-		return c.setFrequency(ctx, cmd.TeamID, fields[1], fields[2])
-
-	case "setowner":
-		if len(fields) != 3 {
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Blocks: slack.Blocks{
-					BlockSet: []slack.Block{
-						slack.NewHeaderBlock(
-							slack.NewTextBlockObject("plain_text", "Set Owner Help", false, false),
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation setowner <label> <@user>`", false, false),
-							nil,
-							nil,
-						),
-						slack.NewSectionBlock(
-							slack.NewTextBlockObject("mrkdwn", "Assigns the given user as the new owner of the rotation.\nExample: `/rotation setowner devRotation <@U12345678>`", false, false),
-							nil,
-							nil,
-						),
-					},
-				},
-			}, nil
-		}
-
-		return c.setOwner(ctx, cmd.TeamID, fields[1], fields[2])
-
-	case "list":
-		if len(fields) != 1 {
-			return slack.Msg{
-				ResponseType: slack.ResponseTypeEphemeral,
-				Text:         "*Usage:* `/rotation list`",
-			}, nil
-		}
-
-		// Use a reasonable limit (e.g., 100). For now, we don't handle a pagination token from the caller.
-		rotations, _, err := c.repo.ListRotations(ctx, cmd.TeamID, 100, nil)
-		if err != nil {
-			return slack.Msg{}, err
-		}
-
-		if len(rotations) == 0 {
-			return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: "No rotations found."}, nil
-		}
-
-		text := "*Team Rotations:*\n"
-		for _, r := range rotations {
-			text += fmt.Sprintf("• `%s`: current owner <@%s>\n", r.RotationLabel, r.CurrentOwner)
-		}
-
-		return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: text}, nil
-
-	default:
-		return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Invalid rotation command."}, nil
+func (c *CreateCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Create Rotation Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation create <label> <frequency> [@user...]`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Valid frequencies: daily, weekly, biweekly, monthly.\nExample: `/rotation create devRotation weekly <@U12345678>`", false, false),
+			nil,
+			nil,
+		),
 	}
 }
 
-// Implementations of helper functions:
+func (c *CreateCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) < 2 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	label := args[0]
+	frequency := args[1]
+	var users []string
+	if len(args) > 2 {
+		users = args[2:]
+	}
+	
+	return c.createRotation(ctx, cmd, label, frequency, users)
+}
 
-func (c *RotationCommand) createRotation(ctx context.Context, cmd slack.SlashCommand, label, frequency string, users []string) (slack.Msg, error) {
+func (c *CreateCommand) createRotation(ctx context.Context, cmd slack.SlashCommand, label, frequency string, users []string) (slack.Msg, error) {
 	user, err := c.slackClient.GetUserInfo(cmd.UserID)
 
 	if err != nil {
@@ -366,7 +223,51 @@ func (c *RotationCommand) createRotation(ctx context.Context, cmd slack.SlashCom
 	return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: fmt.Sprintf("Rotation `%s` created.", label)}, nil
 }
 
-func (c *RotationCommand) showRotation(ctx context.Context, teamID, label string) (slack.Msg, error) {
+// ShowCommand handles the "show" subcommand
+type ShowCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewShowCommand(repo repository.RotationRepository) *ShowCommand {
+	return &ShowCommand{
+		repo: repo,
+	}
+}
+
+func (c *ShowCommand) Name() string {
+	return "show"
+}
+
+func (c *ShowCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Show Rotation Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation show <label>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Example: `/rotation show devRotation`", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *ShowCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) < 1 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.showRotation(ctx, cmd.TeamID, args[0])
+}
+
+func (c *ShowCommand) showRotation(ctx context.Context, teamID, label string) (slack.Msg, error) {
 	r, err := c.repo.GetRotation(ctx, teamID, label)
 
 	if err != nil || r == nil {
@@ -377,7 +278,51 @@ func (c *RotationCommand) showRotation(ctx context.Context, teamID, label string
 		Text: fmt.Sprintf("Rotation `%s`: current owner <@%s>, next <@%s>", label, r.CurrentOwner, nextOwner(r))}, nil
 }
 
-func (c *RotationCommand) nextRotation(ctx context.Context, teamID, label string) (slack.Msg, error) {
+// NextCommand handles the "next" subcommand
+type NextCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewNextCommand(repo repository.RotationRepository) *NextCommand {
+	return &NextCommand{
+		repo: repo,
+	}
+}
+
+func (c *NextCommand) Name() string {
+	return "next"
+}
+
+func (c *NextCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Next Rotation Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation next <label>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Advances to the next rotation member and returns the updated owner.", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *NextCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) < 1 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.nextRotation(ctx, cmd.TeamID, args[0])
+}
+
+func (c *NextCommand) nextRotation(ctx context.Context, teamID, label string) (slack.Msg, error) {
 	r, err := c.repo.GetRotation(ctx, teamID, label)
 
 	if err != nil || r == nil {
@@ -388,7 +333,96 @@ func (c *RotationCommand) nextRotation(ctx context.Context, teamID, label string
 		Text: fmt.Sprintf("Next owner for `%s` is <@%s>.", label, nextOwner(r))}, nil
 }
 
-func (c *RotationCommand) modifyRotationMembers(ctx context.Context, teamID, label string, userMentions []string, action string) (slack.Msg, error) {
+// AddCommand handles the "add" subcommand
+type AddCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewAddCommand(repo repository.RotationRepository) *AddCommand {
+	return &AddCommand{
+		repo: repo,
+	}
+}
+
+func (c *AddCommand) Name() string {
+	return "add"
+}
+
+func (c *AddCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Add Users Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation add <label> <@user...>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Adds one or more users to the rotation.\nExample: `/rotation add devRotation <@U12345678> <@U87654321>`", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *AddCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) < 2 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.modifyRotationMembers(ctx, cmd.TeamID, args[0], args[1:], "add")
+}
+
+// RemoveCommand handles the "remove" subcommand
+type RemoveCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewRemoveCommand(repo repository.RotationRepository) *RemoveCommand {
+	return &RemoveCommand{
+		repo: repo,
+	}
+}
+
+func (c *RemoveCommand) Name() string {
+	return "remove"
+}
+
+func (c *RemoveCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Remove Users Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation remove <label> <@user...>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Removes one or more users from the rotation.\nExample: `/rotation remove devRotation <@U12345678>`", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *RemoveCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) < 2 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.modifyRotationMembers(ctx, cmd.TeamID, args[0], args[1:], "remove")
+}
+
+// modifyRotationMembers is a shared implementation for add and remove commands
+func (c *AddCommand) modifyRotationMembers(ctx context.Context, teamID, label string, userMentions []string, action string) (slack.Msg, error) {
 	r, err := c.repo.GetRotation(ctx, teamID, label)
 
 	if err != nil || r == nil {
@@ -430,7 +464,94 @@ func (c *RotationCommand) modifyRotationMembers(ctx context.Context, teamID, lab
 		Text: fmt.Sprintf("Rotation `%s` members updated.", label)}, nil
 }
 
-func (c *RotationCommand) moveRotationMember(ctx context.Context, teamID, label, user, posStr string) (slack.Msg, error) {
+// modifyRotationMembers is a shared implementation for add and remove commands
+func (c *RemoveCommand) modifyRotationMembers(ctx context.Context, teamID, label string, userMentions []string, action string) (slack.Msg, error) {
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	if action == "add" {
+		for _, u := range userMentions {
+			userID, err := extractUserIDFromMention(u)
+
+			if err != nil {
+				return slack.Msg{ //nolint:nilerr
+					ResponseType: slack.ResponseTypeEphemeral,
+					Text:         fmt.Sprintf("Invalid user mention: %s", u),
+				}, nil
+			}
+
+			if !contains(r.RotationOrder, userID) {
+				r.RotationOrder = append(r.RotationOrder, userID)
+			}
+		}
+	} else {
+		filtered := []string{}
+
+		for _, member := range r.RotationOrder {
+			if !contains(userMentions, member) {
+				filtered = append(filtered, member)
+			}
+		}
+
+		r.RotationOrder = filtered
+	}
+
+	if err := c.repo.UpsertRotation(ctx, *r); err != nil {
+		return slack.Msg{}, err
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
+		Text: fmt.Sprintf("Rotation `%s` members updated.", label)}, nil
+}
+
+// MoveCommand handles the "move" subcommand
+type MoveCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewMoveCommand(repo repository.RotationRepository) *MoveCommand {
+	return &MoveCommand{
+		repo: repo,
+	}
+}
+
+func (c *MoveCommand) Name() string {
+	return "move"
+}
+
+func (c *MoveCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Move User Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation move <label> <@user> <position>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Moves the specified user to a new position (0-indexed).\nExample: `/rotation move devRotation <@U12345678> 0`", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *MoveCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) != 3 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.moveRotationMember(ctx, cmd.TeamID, args[0], args[1], args[2])
+}
+
+func (c *MoveCommand) moveRotationMember(ctx context.Context, teamID, label, user, posStr string) (slack.Msg, error) {
 	userID, err := extractUserIDFromMention(user)
 
 	if err != nil {
@@ -463,8 +584,52 @@ func (c *RotationCommand) moveRotationMember(ctx context.Context, teamID, label,
 	return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: fmt.Sprintf("Moved <@%s> in rotation `%s`.", user, label)}, c.repo.UpsertRotation(ctx, *r)
 }
 
+// ReorderCommand handles the "reorder" subcommand
+type ReorderCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewReorderCommand(repo repository.RotationRepository) *ReorderCommand {
+	return &ReorderCommand{
+		repo: repo,
+	}
+}
+
+func (c *ReorderCommand) Name() string {
+	return "reorder"
+}
+
+func (c *ReorderCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Reorder Rotation Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation reorder <label> <@user...>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Reorders the entire rotation. You must provide all current members in the new order.\nExample: `/rotation reorder devRotation <@U12345678> <@U87654321>`", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *ReorderCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) < 2 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.reorderRotation(ctx, cmd.TeamID, args[0], args[1:])
+}
+
 // reorderRotation reorders the rotation members based on the provided user list.
-func (c *RotationCommand) reorderRotation(ctx context.Context, teamID, label string, users []string) (slack.Msg, error) {
+func (c *ReorderCommand) reorderRotation(ctx context.Context, teamID, label string, users []string) (slack.Msg, error) {
 	r, err := c.repo.GetRotation(ctx, teamID, label)
 
 	if err != nil || r == nil {
@@ -495,8 +660,52 @@ func (c *RotationCommand) reorderRotation(ctx context.Context, teamID, label str
 		Text: fmt.Sprintf("Rotation `%s` reordered.", label)}, nil
 }
 
+// SetFrequencyCommand handles the "setfrequency" subcommand
+type SetFrequencyCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewSetFrequencyCommand(repo repository.RotationRepository) *SetFrequencyCommand {
+	return &SetFrequencyCommand{
+		repo: repo,
+	}
+}
+
+func (c *SetFrequencyCommand) Name() string {
+	return "setfrequency"
+}
+
+func (c *SetFrequencyCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Set Frequency Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation setfrequency <label> <frequency>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Frequency options: daily, weekly, biweekly, monthly.\nExample: `/rotation setfrequency devRotation weekly`", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *SetFrequencyCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) != 2 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.setFrequency(ctx, cmd.TeamID, args[0], args[1])
+}
+
 // setFrequency sets a new frequency for the rotation and recalculates the next rotation date.
-func (c *RotationCommand) setFrequency(ctx context.Context, teamID, label, frequency string) (slack.Msg, error) {
+func (c *SetFrequencyCommand) setFrequency(ctx context.Context, teamID, label, frequency string) (slack.Msg, error) {
 	r, err := c.repo.GetRotation(ctx, teamID, label)
 
 	if err != nil || r == nil {
@@ -514,8 +723,54 @@ func (c *RotationCommand) setFrequency(ctx context.Context, teamID, label, frequ
 		Text: fmt.Sprintf("Frequency for rotation `%s` set to `%s`.", label, frequency)}, nil
 }
 
+// SetOwnerCommand handles the "setowner" subcommand
+type SetOwnerCommand struct {
+	repo repository.RotationRepository
+	slackClient *slack.Client
+}
+
+func NewSetOwnerCommand(repo repository.RotationRepository, slackClient *slack.Client) *SetOwnerCommand {
+	return &SetOwnerCommand{
+		repo: repo,
+		slackClient: slackClient,
+	}
+}
+
+func (c *SetOwnerCommand) Name() string {
+	return "setowner"
+}
+
+func (c *SetOwnerCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Set Owner Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation setowner <label> <@user>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Assigns the given user as the new owner of the rotation.\nExample: `/rotation setowner devRotation <@U12345678>`", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *SetOwnerCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) != 2 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.setOwner(ctx, cmd.TeamID, args[0], args[1])
+}
+
 // setOwner sets the current owner of the rotation.
-func (c *RotationCommand) setOwner(ctx context.Context, teamID, label, userMention string) (slack.Msg, error) {
+func (c *SetOwnerCommand) setOwner(ctx context.Context, teamID, label, userMention string) (slack.Msg, error) {
 	// Extract the user ID from the mention
 	userID, err := extractUserIDFromMention(userMention)
 
@@ -545,6 +800,58 @@ func (c *RotationCommand) setOwner(ctx context.Context, teamID, label, userMenti
 
 	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
 		Text: fmt.Sprintf("Current owner for rotation `%s` set to <@%s>.", label, userID)}, nil
+}
+
+// ListCommand handles the "list" subcommand
+type ListCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewListCommand(repo repository.RotationRepository) *ListCommand {
+	return &ListCommand{
+		repo: repo,
+	}
+}
+
+func (c *ListCommand) Name() string {
+	return "list"
+}
+
+func (c *ListCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "List Rotations Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation list`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Lists all rotations for the team.", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *ListCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	// Use a reasonable limit (e.g., 100). For now, we don't handle a pagination token from the caller.
+	rotations, _, err := c.repo.ListRotations(ctx, cmd.TeamID, 100, nil)
+	if err != nil {
+		return slack.Msg{}, err
+	}
+
+	if len(rotations) == 0 {
+		return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: "No rotations found."}, nil
+	}
+
+	text := "*Team Rotations:*\n"
+	for _, r := range rotations {
+		text += fmt.Sprintf("• `%s`: current owner <@%s>\n", r.RotationLabel, r.CurrentOwner)
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: text}, nil
 }
 
 // Helper functions
