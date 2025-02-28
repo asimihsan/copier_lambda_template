@@ -6,7 +6,7 @@ setup:
     mise use -g 'python@prefix:3.12'
     mise x python -- pip install --user pipx
     mise install
-    mise x go -- go mod tidy
+    mise x -- go mod tidy
 
 generate:
     mkdir -p internal/handler
@@ -16,14 +16,15 @@ generate:
             -generate types,server,spec \
             -o internal/handler/api.gen.go \
             api/openapi.yaml
-    mise x go -- go mod tidy
+    mise x -- go mod tidy
 
 lint:
     echo "Linting {{ project_name }}..."
-    mise x go -- golangci-lint run --fix ./...
+    mise x -- golangci-lint run --fix ./...
+    mise x -- goimports-reviser -rm-unused -use-cache ./...
 
 test:
-    mise x go -- go test ./... -v
+    mise x -- go test ./... -v
 
 rotation-test:
     echo "Testing rotation functions..."
@@ -34,10 +35,10 @@ override-test:
     # Add commands to run override repository/handler tests
 
 build:
-    mise x go -- go build -o bin/server cmd/server/main.go
+    mise x -- go build -o bin/server cmd/server/main.go
 
 run:
-    mise x go -- go run cmd/server/main.go
+    mise x -- go run cmd/server/main.go
 
 docker-build:
     docker build --target final -t {{ project_name }}:latest .

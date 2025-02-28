@@ -9,6 +9,7 @@ import (
 	"{{ github_path }}/internal/repository"
 	"{{ github_path }}/internal/server"
 	"{{ github_path }}/pkg/logger"
+
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 )
@@ -105,11 +106,17 @@ func run(c *cli.Context) error {
 
 	overrideRepo := repository.NewDynamoDBOverrideRepository(dynamoClient, cfg.Slack.OverrideTableName)
 	rotationRepo := repository.NewDynamoDBRotationRepository(dynamoClient, cfg.Slack.RotationTableName)
+	scheduleRepo := repository.NewDynamoDBRotationScheduleRepo(dynamoClient, cfg.Slack.RotationScheduleTableName)
 
-	// Create your API server that implements the generated interface.
-	// (You must provide an implementation of handler.ServerInterface for your API endpoints.)
-	apiHandler := handler.NewSlackHandler(overrideRepo, rotationRepo, cfg.Slack, log.Logger)
-	srv := server.New(cfg, apiHandler)
+	slackHandler := handler.NewSlackHandler(overrideRepo, rotationRepo, cfg.Slack, log.Logger)
+	tickHandler := handler.NewTickHandler(scheduleRepo, rotationRepo, handler.NewSlackClient(cfg.Slack.BotToken))
+
+	compositeHandler := &handler.CompositeHandler{
+		Slack: slackHandler,
+		Tick:  tickHandler,
+	}
+
+	srv := server.New(cfg, compositeHandler)
 
 	// Start the Echo server.
 	return srv.Start()

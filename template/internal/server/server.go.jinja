@@ -62,10 +62,12 @@ func New(config *config.Config, si handler.ServerInterface) *Server {
 
 	handler.RegisterHandlers(api, si)
 	
-	// Register tick endpoint if the handler implements it
-	// if tickHandler, ok := si.(*handler.TickHandler); ok {
-	//	api.POST("/tick", tickHandler.PostTick)
-	//}
+	type tickPoster interface {
+		PostTick(echo.Context) error
+	}
+	if tp, ok := si.(tickPoster); ok {
+		api.POST("/tick", tp.PostTick)
+	}
 
 	// Add dedicated Slack route with verification middleware
 	slackGroup := e.Group("/slack")
