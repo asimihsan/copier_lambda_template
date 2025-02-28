@@ -8,6 +8,15 @@ servers:
   - url: /api/v1
 
 paths:
+  # /tick:
+  #   post:
+  #     summary: "Process scheduled tick events"
+  #     description: "Invoked periodically to process due rotation schedule events."
+  #     operationId: ProcessTick
+  #     responses:
+  #       '200':
+  #         description: "Tick processed successfully"
+          
   /slack:
     post:
       summary: "Handle Slack slash command"

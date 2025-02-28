@@ -26,6 +26,10 @@ Parameters:
     Type: String
     Description: DynamoDB table name for rotation
 
+  RotationScheduleTableName:
+    Type: String
+    Description: DynamoDB table name for rotation schedule
+
 Resources:
   MyFunction:
     Type: AWS::Serverless::Function
@@ -43,6 +47,7 @@ Resources:
           SECRETS_ARN: !Ref SecretsArn
           OVERRIDE_TABLE_NAME: !Ref OverrideTableName
           ROTATION_TABLE_NAME: !Ref RotationTableName
+          ROTATION_SCHEDULE_TABLE_NAME: !Ref RotationScheduleTableName
       AutoPublishAlias: live
       ProvisionedConcurrencyConfig:
         ProvisionedConcurrentExecutions: 1

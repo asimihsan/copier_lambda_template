@@ -6,6 +6,10 @@ output "override_table_name" {
   value = aws_dynamodb_table.override_requests.name
 }
 
+output "rotation_schedule_table_name" {
+  value = aws_dynamodb_table.rotation_schedule.name
+}
+
 output "lambda_secrets_arn" {
   value = aws_secretsmanager_secret.lambda_secrets.arn
 }

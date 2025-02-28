@@ -98,6 +98,9 @@ sam-deploy:
 
     ROTATION_TABLE_NAME=$(echo "$LAMBDA_OUTPUTS" | jq -r '.rotation_table_name.value')
     echo "Rotation table name: $ROTATION_TABLE_NAME"
+
+    ROTATION_SCHEDULE_TABLE_NAME=$(echo "$LAMBDA_OUTPUTS" | jq -r '.rotation_schedule_table_name.value')
+    echo "Rotation schedule table name: $ROTATION_SCHEDULE_TABLE_NAME"
     
     # Build and deploy with SAM (no guided mode)
     mise x aws-sam -- sam build --use-container --template-file sam/template.yaml
@@ -115,7 +118,8 @@ sam-deploy:
             ProjectPrefix=$PROJECT_PREFIX \
             SecretsArn=$SECRETS_ARN \
             OverrideTableName=$OVERRIDE_TABLE_NAME \
-            RotationTableName=$ROTATION_TABLE_NAME
+            RotationTableName=$ROTATION_TABLE_NAME \
+            RotationScheduleTableName=$ROTATION_SCHEDULE_TABLE_NAME
 
 create-sops-age-key:
     mkdir -p ~/.config/sops/age

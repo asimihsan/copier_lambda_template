@@ -1,0 +1,140 @@
+package handler
+
+import (
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
+
+	"github.com/slack-go/slack"
+
+	"{{ github_path }}/internal/repository"
+)
+
+// SlackNotifier defines an interface for sending notifications to Slack
+type SlackNotifier interface {
+	NotifyChannel(channelID, message string) error
+}
+
+// SlackClient implements SlackNotifier using the slack-go client
+type SlackClient struct {
+	client *slack.Client
+}
+
+// NewSlackClient creates a new Slack client wrapper
+func NewSlackClient(token string) *SlackClient {
+	return &SlackClient{
+		client: slack.New(token),
+	}
+}
+
+// NotifyChannel sends a message to a Slack channel
+func (s *SlackClient) NotifyChannel(channelID, message string) error {
+	_, _, err := s.client.PostMessage(
+		channelID,
+		slack.MsgOptionText(message, false),
+	)
+	return err
+}
+
+// TickHandler processes scheduled tick events.
+type TickHandler struct {
+	ScheduleRepo repository.RotationScheduleRepository
+	RotationRepo repository.RotationRepository
+	SlackNotifier SlackNotifier
+}
+
+// NewTickHandler creates a new tick handler
+func NewTickHandler(
+	scheduleRepo repository.RotationScheduleRepository,
+	rotationRepo repository.RotationRepository,
+	slackNotifier SlackNotifier,
+) *TickHandler {
+	return &TickHandler{
+		ScheduleRepo: scheduleRepo,
+		RotationRepo: rotationRepo,
+		SlackNotifier: slackNotifier,
+	}
+}
+
+// PostTick is the HTTP handler for processing tick events.
+func (h *TickHandler) PostTick(c echo.Context) error {
+	ctx := c.Request().Context()
+	now := time.Now().UTC()
+	hourKey := now.Format("2006-01-02T15")
+
+	log.Info().Str("hourKey", hourKey).Msg("Processing tick events")
+
+	events, err := h.ScheduleRepo.GetEventsByHour(ctx, hourKey)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get scheduled events")
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to get scheduled events")
+	}
+
+	log.Info().Int("eventCount", len(events)).Msg("Found scheduled events")
+
+	for _, event := range events {
+		// Only process events due within this minute
+		if event.EventTime.After(now) || event.EventTime.Before(now.Add(-time.Minute)) {
+			log.Debug().
+				Time("eventTime", event.EventTime).
+				Time("now", now).
+				Msg("Skipping event not due in this minute")
+			continue
+		}
+
+		log.Info().
+			Str("rotationID", event.RotationID).
+			Str("action", event.Action).
+			Str("nextOwner", event.NextOwner).
+			Msg("Processing event")
+
+		var msg string
+		switch event.Action {
+		case "reminder":
+			msg = fmt.Sprintf("Reminder: rotation handover to <@%s> in 24 hours.", event.NextOwner)
+		case "handover":
+			msg = fmt.Sprintf("Rotation handover now to <@%s>.", event.NextOwner)
+			
+			teamID, rotationLabel := extractRotationComponents(event.RotationID)
+			if err := h.RotationRepo.AdvanceRotation(ctx, teamID, rotationLabel); err != nil {
+				log.Error().
+					Err(err).
+					Str("teamID", teamID).
+					Str("rotationLabel", rotationLabel).
+					Msg("Failed to advance rotation")
+				continue
+			}
+		default:
+			log.Warn().Str("action", event.Action).Msg("Unknown action type")
+			continue
+		}
+
+		if err := h.SlackNotifier.NotifyChannel(event.SlackChannelID, msg); err != nil {
+			log.Error().
+				Err(err).
+				Str("channelID", event.SlackChannelID).
+				Msg("Failed to send Slack notification")
+		} else {
+			log.Info().
+				Str("channelID", event.SlackChannelID).
+				Msg("Sent Slack notification")
+		}
+	}
+
+	return c.NoContent(http.StatusOK)
+}
+
+// extractRotationComponents extracts teamID and rotationLabel from a combined rotation ID
+// Expected format: "teamID#rotationLabel"
+func extractRotationComponents(rotationID string) (teamID, rotationLabel string) {
+	parts := strings.SplitN(rotationID, "#", 2)
+	if len(parts) != 2 {
+		log.Error().Str("rotationID", rotationID).Msg("Invalid rotation ID format")
+		return "", ""
+	}
+	return parts[0], parts[1]
+}
