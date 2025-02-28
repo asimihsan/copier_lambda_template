@@ -304,6 +304,31 @@ func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 
 		return c.setOwner(ctx, cmd.TeamID, fields[1], fields[2])
 
+	case "list":
+		if len(fields) != 1 {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         "*Usage:* `/rotation list`",
+			}, nil
+		}
+
+		// Use a reasonable limit (e.g., 100). For now, we don't handle a pagination token from the caller.
+		rotations, _, err := c.repo.ListRotations(ctx, cmd.TeamID, 100, nil)
+		if err != nil {
+			return slack.Msg{}, err
+		}
+
+		if len(rotations) == 0 {
+			return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: "No rotations found."}, nil
+		}
+
+		text := "*Team Rotations:*\n"
+		for _, r := range rotations {
+			text += fmt.Sprintf("• `%s`: current owner <@%s>\n", r.RotationLabel, r.CurrentOwner)
+		}
+
+		return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: text}, nil
+
 	default:
 		return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Invalid rotation command."}, nil
 	}

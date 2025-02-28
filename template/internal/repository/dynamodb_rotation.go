@@ -148,6 +148,31 @@ func (r *DynamoDBRotationRepository) UpsertRotation(ctx context.Context, rotatio
 	return nil
 }
 
+// ListRotations lists all rotations for the provided team.
+func (r *DynamoDBRotationRepository) ListRotations(ctx context.Context, teamID string, limit int32, lastEvaluatedKey map[string]types.AttributeValue) ([]Rotation, map[string]types.AttributeValue, error) {
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(r.tableName),
+		KeyConditionExpression: aws.String("creator_team_id = :teamID"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":teamID": &types.AttributeValueMemberS{Value: teamID},
+		},
+		Limit:             aws.Int32(limit),
+		ExclusiveStartKey: lastEvaluatedKey,
+	}
+
+	output, err := r.client.Query(ctx, input)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to query rotations: %w", err)
+	}
+
+	var rotations []Rotation
+	if err := attributevalue.UnmarshalListOfMaps(output.Items, &rotations); err != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshal rotations: %w", err)
+	}
+
+	return rotations, output.LastEvaluatedKey, nil
+}
+
 // Helper to calculate the next rotation date.
 func calculateNextRotationDate(lastDate time.Time, frequency string) time.Time {
 	switch frequency {
