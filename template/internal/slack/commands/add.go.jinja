@@ -1,0 +1,95 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/slack-go/slack"
+	"{{ github_path }}/internal/repository"
+)
+
+// AddCommand handles the "add" subcommand
+type AddCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewAddCommand(repo repository.RotationRepository) *AddCommand {
+	return &AddCommand{
+		repo: repo,
+	}
+}
+
+func (c *AddCommand) Name() string {
+	return "add"
+}
+
+func (c *AddCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Add Users Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation add <label> <@user...>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Adds one or more users to the rotation.\nExample: `/rotation add devRotation <@U12345678> <@U87654321>`", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *AddCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) < 2 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.modifyRotationMembers(ctx, cmd.TeamID, args[0], args[1:], "add")
+}
+
+func (c *AddCommand) modifyRotationMembers(ctx context.Context, teamID, label string, userMentions []string, action string) (slack.Msg, error) {
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	if action == "add" {
+		for _, u := range userMentions {
+			userID, err := extractUserIDFromMention(u)
+
+			if err != nil {
+				return slack.Msg{ //nolint:nilerr
+					ResponseType: slack.ResponseTypeEphemeral,
+					Text:         fmt.Sprintf("Invalid user mention: %s", u),
+				}, nil
+			}
+
+			if !contains(r.RotationOrder, userID) {
+				r.RotationOrder = append(r.RotationOrder, userID)
+			}
+		}
+	} else {
+		filtered := []string{}
+
+		for _, member := range r.RotationOrder {
+			if !contains(userMentions, member) {
+				filtered = append(filtered, member)
+			}
+		}
+
+		r.RotationOrder = filtered
+	}
+
+	if err := c.repo.UpsertRotation(ctx, *r); err != nil {
+		return slack.Msg{}, err
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
+		Text: fmt.Sprintf("Rotation `%s` members updated.", label)}, nil
+}

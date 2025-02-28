@@ -1,0 +1,61 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/slack-go/slack"
+	"{{ github_path }}/internal/repository"
+)
+
+// ListCommand handles the "list" subcommand
+type ListCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewListCommand(repo repository.RotationRepository) *ListCommand {
+	return &ListCommand{
+		repo: repo,
+	}
+}
+
+func (c *ListCommand) Name() string {
+	return "list"
+}
+
+func (c *ListCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "List Rotations Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation list`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Lists all rotations for the team.", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *ListCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	// Use a reasonable limit (e.g., 100). For now, we don't handle a pagination token from the caller.
+	rotations, _, err := c.repo.ListRotations(ctx, cmd.TeamID, 100, nil)
+	if err != nil {
+		return slack.Msg{}, err
+	}
+
+	if len(rotations) == 0 {
+		return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: "No rotations found."}, nil
+	}
+
+	text := "*Team Rotations:*\n"
+	for _, r := range rotations {
+		text += fmt.Sprintf("• `%s`: current owner <@%s>\n", r.RotationLabel, r.CurrentOwner)
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: text}, nil
+}

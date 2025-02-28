@@ -1,0 +1,88 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/slack-go/slack"
+	"{{ github_path }}/internal/repository"
+)
+
+// SetOwnerCommand handles the "setowner" subcommand
+type SetOwnerCommand struct {
+	repo repository.RotationRepository
+	slackClient *slack.Client
+}
+
+func NewSetOwnerCommand(repo repository.RotationRepository, slackClient *slack.Client) *SetOwnerCommand {
+	return &SetOwnerCommand{
+		repo: repo,
+		slackClient: slackClient,
+	}
+}
+
+func (c *SetOwnerCommand) Name() string {
+	return "setowner"
+}
+
+func (c *SetOwnerCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Set Owner Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation setowner <label> <@user>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Assigns the given user as the new owner of the rotation.\nExample: `/rotation setowner devRotation <@U12345678>`", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *SetOwnerCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) != 2 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.setOwner(ctx, cmd.TeamID, args[0], args[1])
+}
+
+// setOwner sets the current owner of the rotation.
+func (c *SetOwnerCommand) setOwner(ctx context.Context, teamID, label, userMention string) (slack.Msg, error) {
+	// Extract the user ID from the mention
+	userID, err := extractUserIDFromMention(userMention)
+
+	if err != nil {
+		return slack.Msg{ //nolint:nilerr
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         fmt.Sprintf("Invalid user mention: %s", userMention),
+		}, nil
+	}
+
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	if !contains(r.RotationOrder, userID) {
+		return slack.Msg{}, fmt.Errorf("User <@%s> is not a member of rotation `%s`", userID, label)
+	}
+
+	r.CurrentOwner = userID
+	r.NextRotationDate = calculateNextRotationDate(r.LastRotationDate, r.Frequency)
+
+	if err := c.repo.UpsertRotation(ctx, *r); err != nil {
+		return slack.Msg{}, err
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
+		Text: fmt.Sprintf("Current owner for rotation `%s` set to <@%s>.", label, userID)}, nil
+}

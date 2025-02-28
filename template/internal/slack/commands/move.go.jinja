@@ -1,0 +1,87 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+
+	"github.com/slack-go/slack"
+	"{{ github_path }}/internal/repository"
+)
+
+// MoveCommand handles the "move" subcommand
+type MoveCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewMoveCommand(repo repository.RotationRepository) *MoveCommand {
+	return &MoveCommand{
+		repo: repo,
+	}
+}
+
+func (c *MoveCommand) Name() string {
+	return "move"
+}
+
+func (c *MoveCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Move User Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation move <label> <@user> <position>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Moves the specified user to a new position (0-indexed).\nExample: `/rotation move devRotation <@U12345678> 0`", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *MoveCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) != 3 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.moveRotationMember(ctx, cmd.TeamID, args[0], args[1], args[2])
+}
+
+func (c *MoveCommand) moveRotationMember(ctx context.Context, teamID, label, user, posStr string) (slack.Msg, error) {
+	userID, err := extractUserIDFromMention(user)
+
+	if err != nil {
+		return slack.Msg{ //nolint:nilerr
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         fmt.Sprintf("Invalid user mention: %s", user),
+		}, nil
+	}
+
+	user = userID
+
+	pos, err := strconv.Atoi(posStr)
+
+	if err != nil {
+		return slack.Msg{}, err
+	}
+
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	r.RotationOrder = remove(r.RotationOrder, user)
+	if pos > len(r.RotationOrder) {
+		pos = len(r.RotationOrder)
+	}
+
+	r.RotationOrder = append(r.RotationOrder[:pos], append([]string{user}, r.RotationOrder[pos:]...)...)
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: fmt.Sprintf("Moved <@%s> in rotation `%s`.", user, label)}, c.repo.UpsertRotation(ctx, *r)
+}

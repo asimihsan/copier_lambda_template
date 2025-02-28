@@ -1,0 +1,72 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/slack-go/slack"
+	"{{ github_path }}/internal/repository"
+)
+
+// SetFrequencyCommand handles the "setfrequency" subcommand
+type SetFrequencyCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewSetFrequencyCommand(repo repository.RotationRepository) *SetFrequencyCommand {
+	return &SetFrequencyCommand{
+		repo: repo,
+	}
+}
+
+func (c *SetFrequencyCommand) Name() string {
+	return "setfrequency"
+}
+
+func (c *SetFrequencyCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Set Frequency Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation setfrequency <label> <frequency>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Frequency options: daily, weekly, biweekly, monthly.\nExample: `/rotation setfrequency devRotation weekly`", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *SetFrequencyCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) != 2 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.setFrequency(ctx, cmd.TeamID, args[0], args[1])
+}
+
+// setFrequency sets a new frequency for the rotation and recalculates the next rotation date.
+func (c *SetFrequencyCommand) setFrequency(ctx context.Context, teamID, label, frequency string) (slack.Msg, error) {
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	r.Frequency = frequency
+	r.NextRotationDate = calculateNextRotationDate(r.LastRotationDate, frequency)
+
+	if err := c.repo.UpsertRotation(ctx, *r); err != nil {
+		return slack.Msg{}, err
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
+		Text: fmt.Sprintf("Frequency for rotation `%s` set to `%s`.", label, frequency)}, nil
+}

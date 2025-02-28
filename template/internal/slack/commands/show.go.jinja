@@ -1,0 +1,64 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/slack-go/slack"
+	"{{ github_path }}/internal/repository"
+)
+
+// ShowCommand handles the "show" subcommand
+type ShowCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewShowCommand(repo repository.RotationRepository) *ShowCommand {
+	return &ShowCommand{
+		repo: repo,
+	}
+}
+
+func (c *ShowCommand) Name() string {
+	return "show"
+}
+
+func (c *ShowCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Show Rotation Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation show <label>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Example: `/rotation show devRotation`", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *ShowCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) < 1 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	return c.showRotation(ctx, cmd.TeamID, args[0])
+}
+
+func (c *ShowCommand) showRotation(ctx context.Context, teamID, label string) (slack.Msg, error) {
+	r, err := c.repo.GetRotation(ctx, teamID, label)
+
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
+		Text: fmt.Sprintf("Rotation `%s`: current owner <@%s>, next <@%s>", label, r.CurrentOwner, nextOwner(r))}, nil
+}

@@ -1,0 +1,86 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/slack-go/slack"
+	"{{ github_path }}/internal/repository"
+)
+
+// SetChannelCommand updates the rotation's Slack channel.
+type SetChannelCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewSetChannelCommand(repo repository.RotationRepository) *SetChannelCommand {
+	return &SetChannelCommand{repo: repo}
+}
+
+func (c *SetChannelCommand) Name() string {
+	return "setchannel"
+}
+
+func (c *SetChannelCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Set Channel Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation setchannel <label> <#channel|clear>`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn",
+				"Associates a Slack channel with the rotation. Use `clear` to remove any channel association.",
+				false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *SetChannelCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) != 2 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+
+	label := args[0]
+	channelArg := args[1]
+	var channelID string
+	if channelArg == "clear" {
+		channelID = ""
+	} else {
+		var err error
+		channelID, err = extractChannelID(channelArg)
+		if err != nil {
+			return slack.Msg{ //nolint:nilerr
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Invalid channel mention: %s", channelArg),
+			}, nil
+		}
+	}
+
+	r, err := c.repo.GetRotation(ctx, cmd.TeamID, label)
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("rotation `%s` not found", label)
+	}
+
+	r.SlackChannelID = channelID
+	if err := c.repo.UpsertRotation(ctx, *r); err != nil {
+		return slack.Msg{}, err
+	}
+
+	var responseText string
+	if channelID == "" {
+		responseText = fmt.Sprintf("Slack channel association cleared for rotation `%s`.", label)
+	} else {
+		responseText = fmt.Sprintf("Rotation `%s` is now associated with channel <#%s>.", label, channelID)
+	}
+
+	return slack.Msg{ResponseType: slack.ResponseTypeInChannel, Text: responseText}, nil
+}

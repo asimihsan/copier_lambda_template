@@ -1,0 +1,61 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/rs/zerolog"
+	"github.com/slack-go/slack"
+	"{{ github_path }}/internal/tick"
+)
+
+// TickCommand handles the tick subcommand.
+type TickCommand struct {
+	tickProcessor tick.Processor
+	logger        zerolog.Logger
+}
+
+func NewTickCommand(tickProcessor tick.Processor, logger zerolog.Logger) *TickCommand {
+	return &TickCommand{
+		tickProcessor: tickProcessor,
+		logger:        logger,
+	}
+}
+
+func (c *TickCommand) Name() string {
+	return "tick"
+}
+
+func (c *TickCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Tick Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation tick [teamID]`\n(Optional teamID to trigger the nuclear tick)", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *TickCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	var teamID string
+	if len(args) > 0 {
+		teamID = strings.TrimSpace(args[0])
+	}
+	err := c.tickProcessor.ProcessTick(ctx, teamID)
+	if err != nil {
+		return slack.Msg{}, fmt.Errorf("tick error: %w", err)
+	}
+	return slack.Msg{
+		ResponseType: slack.ResponseTypeInChannel,
+		Text:         "Tick executed successfully.",
+	}, nil
+}
+
+func (c *TickCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand) (slack.Msg, error) {
+	args := strings.Fields(strings.TrimSpace(cmd.Text))
+	return c.Execute(ctx, cmd, args)
+}

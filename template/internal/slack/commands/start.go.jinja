@@ -1,0 +1,90 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/slack-go/slack"
+	"{{ github_path }}/internal/repository"
+)
+
+// StartCommand sets the rotation's start date to today at midnight UTC.
+type StartCommand struct {
+	repo repository.RotationRepository
+}
+
+func NewStartCommand(repo repository.RotationRepository) *StartCommand {
+	return &StartCommand{repo: repo}
+}
+
+func (c *StartCommand) Name() string {
+	return "start"
+}
+
+func (c *StartCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Start Rotation Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn",
+				"*Usage:* `/rotation start <label> [YYYY-MM-DD]`\nSets the rotation start date to the specified date (at midnight UTC). If no date is provided, today is used.",
+				false, false,
+			),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *StartCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	// Expect 1 or 2 arguments: label and optional YYYY-MM-DD.
+	if len(args) < 1 || len(args) > 2 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+
+	label := args[0]
+	var startDate time.Time
+
+	if len(args) == 2 {
+		// Attempt to parse the provided date.
+		parsed, err := time.Parse("2006-01-02", args[1])
+		if err != nil {
+			return slack.Msg{ //nolint:nilerr
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text:         fmt.Sprintf("Invalid date format: `%s`. Please use YYYY-MM-DD.", args[1]),
+			}, nil
+		}
+		startDate = parsed.UTC().Truncate(24 * time.Hour)
+	} else {
+		startDate = time.Now().UTC().Truncate(24 * time.Hour)
+	}
+
+	rotation, err := c.repo.GetRotation(ctx, cmd.TeamID, label)
+	if err != nil || rotation == nil {
+		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+	}
+
+	rotation.LastRotationDate = startDate
+	rotation.NextRotationDate = calculateNextRotationDate(startDate, rotation.Frequency)
+
+	if err := c.repo.UpsertRotation(ctx, *rotation); err != nil {
+		return slack.Msg{}, err
+	}
+
+	var responseText string
+	if len(args) == 2 {
+		responseText = fmt.Sprintf("Rotation `%s` start set to %s at midnight UTC.", label, startDate.Format("2006-01-02"))
+	} else {
+		responseText = fmt.Sprintf("Rotation `%s` start set to today at midnight UTC.", label)
+	}
+
+	return slack.Msg{
+		ResponseType: slack.ResponseTypeInChannel,
+		Text:         responseText,
+	}, nil
+}
