@@ -57,7 +57,10 @@ func (n *RotationNotifier) AnnounceRotation(rotation *repository.Rotation, dmPar
 			rotation.SlackChannelID,
 			slack.MsgOptionText(msg, false),
 		)
-		result = multierror.Append(result, channelErr)
+
+		if channelErr != nil {
+			result = multierror.Append(result, channelErr)
+		}
 	}
 	
 	// Direct message to relevant parties if requested
@@ -70,7 +73,10 @@ func (n *RotationNotifier) AnnounceRotation(rotation *repository.Rotation, dmPar
 				rotation.NextRotationDate.Format("Mon, Jan 2 2006")), 
 			false),
 		)
-		result = multierror.Append(result, currentOwnerErr)
+
+		if currentOwnerErr != nil {
+			result = multierror.Append(result, currentOwnerErr)
+		}
 		
 		// DM next owner
 		_, _, nextOwnerErr := n.slackClient.PostMessage(
@@ -80,7 +86,10 @@ func (n *RotationNotifier) AnnounceRotation(rotation *repository.Rotation, dmPar
 				rotation.NextRotationDate.Format("Mon, Jan 2 2006")), 
 			false),
 		)
-		result = multierror.Append(result, nextOwnerErr)
+
+		if nextOwnerErr != nil {
+			result = multierror.Append(result, nextOwnerErr)
+		}
 	}
 	
 	return msg, result
