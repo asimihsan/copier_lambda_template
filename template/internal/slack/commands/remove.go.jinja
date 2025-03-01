@@ -42,24 +42,6 @@ func (c *RemoveCommand) HelpBlocks() []slack.Block {
 	}
 }
 
-// extractUserIDs converts a slice of mentions to userIDs and tracks invalid mentions
-func (c *RemoveCommand) extractUserIDs(mentions []string) ([]string, []string) {
-	userIDs := make([]string, 0, len(mentions))
-
-	var invalidMentions []string
-	
-	for _, mention := range mentions {
-		userID, err := extractUserIDFromMention(mention)
-		if err != nil {
-			invalidMentions = append(invalidMentions, mention)
-			continue
-		}
-		userIDs = append(userIDs, userID)
-	}
-	
-	return userIDs, invalidMentions
-}
-
 func (c *RemoveCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
 	if len(args) < 2 {
 		return slack.Msg{
@@ -82,7 +64,7 @@ func (c *RemoveCommand) modifyRotationMembers(ctx context.Context, teamID, label
 	}
 
 	// Extract user IDs from mentions first
-	userIDs, invalidMentions := c.extractUserIDs(userMentions)
+	userIDs, invalidMentions := extractUserIDs(userMentions)
 	
 	if len(invalidMentions) > 0 {
 		return slack.Msg{

@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/slack-go/slack"
@@ -70,23 +71,32 @@ func (c *CreateCommand) Execute(ctx context.Context, cmd slack.SlashCommand, arg
 	return c.createRotation(ctx, cmd, label, frequency, users)
 }
 
-func (c *CreateCommand) createRotation(ctx context.Context, cmd slack.SlashCommand, label, frequency string, users []string) (slack.Msg, error) {
+func (c *CreateCommand) createRotation(ctx context.Context, cmd slack.SlashCommand, label, frequency string, userMentions []string) (slack.Msg, error) {
 	user, err := c.slackClient.GetUserInfo(cmd.UserID)
 
 	if err != nil {
 		return slack.Msg{}, err
 	}
 
-	if len(users) == 0 {
-		users = []string{cmd.UserID}
+	userIDs, invalidMentions := extractUserIDs(userMentions)
+
+	if len(invalidMentions) > 0 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text: fmt.Sprintf("Invalid user mentions: %s", strings.Join(invalidMentions, ", ")),
+		}, nil
+	}
+
+	if len(userIDs) == 0 {
+		userIDs = []string{cmd.UserID}
 	}
 
 	rotation := repository.Rotation{
 		CreatorTeamID:    cmd.TeamID,
 		RotationLabel:    label,
 		Frequency:        frequency,
-		CurrentOwner:     users[0],
-		RotationOrder:    users,
+		CurrentOwner:     userIDs[0],
+		RotationOrder:    userIDs,
 		LastRotationDate: time.Now(),
 		NextRotationDate: rotationutil.CalculateNextRotationDate(time.Now(), frequency),
 		CreatorUserID:    cmd.UserID,

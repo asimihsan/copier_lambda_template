@@ -58,6 +58,24 @@ func extractUserIDFromMention(mention string) (string, error) {
 	return match[1], nil
 }
 
+// extractUserIDs converts a slice of mentions to userIDs and tracks invalid mentions
+func extractUserIDs(mentions []string) ([]string, []string) {
+	userIDs := make([]string, 0, len(mentions))
+
+	var invalidMentions []string
+	
+	for _, mention := range mentions {
+		userID, err := extractUserIDFromMention(mention)
+		if err != nil {
+			invalidMentions = append(invalidMentions, mention)
+			continue
+		}
+		userIDs = append(userIDs, userID)
+	}
+	
+	return userIDs, invalidMentions
+}
+
 // extractChannelID extracts a channel ID from a Slack channel mention
 func extractChannelID(mention string) (string, error) {
 	// Accepts a typical Slack channel mention format: <#CHANNELID|channel_name>
