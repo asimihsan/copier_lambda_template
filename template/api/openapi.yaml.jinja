@@ -1,0 +1,135 @@
+openapi: 3.0.0
+info:
+  title: {{ project_name_pretty }} Slack Integration API
+  version: 1.0.0
+  description: API endpoints for handling Slack slash commands, interactivity, and event subscriptions for the Rotate-o-rama app.
+
+paths:
+  /v1/slack/command:
+    post:
+      summary: Handle Slack slash commands
+      description: Endpoint to receive and process Slack slash command payloads.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  description: Verification token (deprecated)
+                team_id:
+                  type: string
+                team_domain:
+                  type: string
+                enterprise_id:
+                  type: string
+                  nullable: true
+                enterprise_name:
+                  type: string
+                  nullable: true
+                channel_id:
+                  type: string
+                channel_name:
+                  type: string
+                user_id:
+                  type: string
+                user_name:
+                  type: string
+                command:
+                  type: string
+                  description: The slash command that was invoked (e.g., /rotation)
+                text:
+                  type: string
+                  description: Any additional text provided after the command
+                response_url:
+                  type: string
+                  format: uri
+                trigger_id:
+                  type: string
+                api_app_id:
+                  type: string
+              required:
+                - team_id
+                - channel_id
+                - user_id
+                - command
+                - response_url
+      responses:
+        '200':
+          description: Successful acknowledgment with optional immediate response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response_type:
+                    type: string
+                    description: Either 'ephemeral' or 'in_channel'
+                  text:
+                    type: string
+
+  /v1/slack/interactivity:
+    post:
+      summary: Handle Slack interactive components
+      description: Endpoint to receive and process payloads from Slack interactive components like buttons and modals.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: string
+                  description: JSON-encoded payload containing interaction details.
+              required:
+                - payload
+      responses:
+        '200':
+          description: Successful acknowledgment of the interactive component action.
+
+  /v1/slack/events:
+    post:
+      summary: Handle Slack event subscriptions
+      description: Endpoint to receive and process event subscription payloads from Slack.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  description: Verification token (deprecated)
+                team_id:
+                  type: string
+                api_app_id:
+                  type: string
+                event:
+                  type: object
+                  description: The event data
+                type:
+                  type: string
+                  description: The type of callback (e.g., 'event_callback')
+                event_id:
+                  type: string
+                event_time:
+                  type: integer
+                authed_users:
+                  type: array
+                  items:
+                    type: string
+              required:
+                - token
+                - team_id
+                - api_app_id
+                - event
+                - type
+                - event_id
+                - event_time
+      responses:
+        '200':
+          description: Successful acknowledgment of the event subscription.

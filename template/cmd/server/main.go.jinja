@@ -110,16 +110,11 @@ func run(c *cli.Context) error {
 
 	// Create the tick handler first
 	tickHandler := handler.NewTickHandler(scheduleRepo, rotationRepo, handler.NewSlackClient(cfg.Slack.BotToken))
-	
+
 	// Now pass tickHandler to NewSlackHandler
 	slackHandler := handler.NewSlackHandler(overrideRepo, rotationRepo, tickHandler, cfg.Slack, log.Logger)
 
-	compositeHandler := &handler.CompositeHandler{
-		Slack: slackHandler,
-		Tick:  tickHandler,
-	}
-
-	srv := server.New(cfg, compositeHandler)
+	srv := server.New(cfg, slackHandler)
 
 	// Start the Echo server.
 	return srv.Start()

@@ -1,0 +1,30 @@
+package handler
+
+import (
+	"net/http"
+
+	"github.com/labstack/echo/v4"
+)
+
+// PostV1SlackEvents handles incoming Slack events callbacks.
+// If the payload contains a "challenge" key, it responds with that value (URL verification).
+// Otherwise, it logs the received payload and acknowledges receipt.
+func (h *SlackHandler) PostV1SlackEvents(ctx echo.Context) error {
+	h.logger.Info().Msg("Received Slack events callback")
+
+	// Bind the JSON payload from Slack.
+	var payload map[string]interface{}
+	if err := ctx.Bind(&payload); err != nil {
+		h.logger.Error().Err(err).Msg("Failed to bind Slack events payload")
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid payload")
+	}
+
+	// If this is a URL verification event, respond with the challenge.
+	if challenge, ok := payload["challenge"].(string); ok {
+		h.logger.Info().Msg("Processing Slack URL verification challenge")
+		return ctx.String(http.StatusOK, challenge)
+	}
+
+	h.logger.Info().Interface("payload", payload).Msg("Processed Slack event payload")
+	return ctx.NoContent(http.StatusOK)
+}

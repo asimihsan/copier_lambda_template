@@ -6,6 +6,11 @@ project_name:
   help: "What is your project name?"
   default: "example-project"
 
+project_name_pretty:
+  type: str
+  help: "What is your project name with spaces?"
+  default: "{{ project_name | replace('-', ' ') | replace('_', ' ') | title }}"
+
 project_name_hyphens:
   type: str
   help: "What is your project name with hyphens?"
@@ -30,6 +35,11 @@ tofu_password_1password_ref:
   type: str
   help: "1Password reference for the Tofu password"
   default: "op://Private/{{ project_name }}/password"
+
+endpoint_url:
+  type: str
+  help: "Endpoint URL for the application"
+  default: "https://example.com"
 
 _exclude:
   - ".git"

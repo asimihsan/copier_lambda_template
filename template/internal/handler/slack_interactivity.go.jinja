@@ -1,0 +1,23 @@
+package handler
+
+import (
+	"net/http"
+
+	"github.com/labstack/echo/v4"
+)
+
+// PostV1SlackInteractivity handles Slack interactivity payloads.
+// It retrieves the JSON-encoded payload from the form field, logs it, and returns HTTP 200.
+func (h *SlackHandler) PostV1SlackInteractivity(ctx echo.Context) error {
+	h.logger.Info().Msg("Received Slack interactivity payload")
+
+	// Retrieve the JSON-encoded payload from the "payload" form value.
+	payload := ctx.FormValue("payload")
+	if payload == "" {
+		h.logger.Warn().Msg("Empty interactivity payload")
+		return echo.NewHTTPError(http.StatusBadRequest, "Missing payload")
+	}
+
+	h.logger.Info().Str("payload", payload).Msg("Processed Slack interactivity payload")
+	return ctx.NoContent(http.StatusOK)
+}

@@ -62,22 +62,30 @@ func New(config *config.Config, si handler.ServerInterface) *Server {
 
 	handler.RegisterHandlers(api, si)
 	
-	type tickPoster interface {
-		PostTick(echo.Context) error
-	}
-	if tp, ok := si.(tickPoster); ok {
-		api.POST("/tick", tp.PostTick)
-	}
-
 	// Add dedicated Slack route with verification middleware
-	slackGroup := e.Group("/slack")
+	slackGroup := e.Group("/v1/slack/command")
 
 	slackGroup.Use(echo.WrapMiddleware(
 		vmiddleware.NewSlackVerificationMiddleware(config.Slack.SigningSecret, log.Logger),
 	))
 	slackGroup.POST("", func(c echo.Context) error {
 		// Ensure that the injected handler (si) implements PostSlack.
-		return si.PostSlack(c)
+		return si.PostV1SlackCommand(c)
+	})
+
+	// Add dedicated Slack interactivity route without verification middleware
+	slackGroup = e.Group("/v1/slack/interactivity")
+
+	slackGroup.POST("", func(c echo.Context) error {
+		// Ensure that the injected handler (si) implements PostSlack.
+		return si.PostV1SlackInteractivity(c)
+	})
+
+	// Add dedicated Slack events route without verification middleware
+	slackGroup = e.Group("/v1/slack/events")
+	slackGroup.POST("", func(c echo.Context) error {
+		// Ensure that the injected handler (si) implements PostSlack.
+		return si.PostV1SlackEvents(c)
 	})
 
 	return &Server{

@@ -1,0 +1,59 @@
+# Display information for your app, including its name, description, and background color
+display_information:
+  name: {{ project_name_pretty}}
+  description: "An app that manages rotations and overrides via slash commands."
+  background_color: "#3AA3E3"
+
+# Features that your app provides
+features:
+  # Configuration for the bot user associated with your app
+  bot_user:
+    display_name: {{ project_name_pretty }}
+    always_online: false
+
+  # Slash commands that users can invoke in Slack
+  slash_commands:
+    - command: /rotation
+      url: {{ endpoint_url }}/v1/slack/command
+      description: Rotation!
+      usage_hint: "[parameters]"
+      should_escape: true
+    - command: /override
+      url: {{ endpoint_url }}/v1/slack/command
+      description: Override
+      usage_hint: "[parameters]"
+      should_escape: true
+
+# OAuth configuration specifying the permissions (scopes) your app requires
+oauth_config:
+  scopes:
+    bot:
+      - chat:write        # Allows the app to send messages as itself
+      - channels:history  # Enables the app to read message history in public channels
+      - channels:read     # Enables the app to read information about public channels
+      - channels:join     # Permits the app to join public channels
+      - users:read        # Allows the app to read user information
+      - im:history        # Enables the app to read message history in direct messages
+      - im:read           # Enables the app to read direct messages
+      - im:write          # Allows the app to send direct messages
+      - commands          # Permits the app to add slash commands
+      - app_mentions:read # Allows the app to receive app mention events
+
+# Settings for your app's behavior and capabilities
+settings:
+  org_deploy_enabled: false         # Indicates whether the app can be deployed across an organization
+  socket_mode_enabled: false        # Specifies whether Socket Mode is enabled
+  token_rotation_enabled: false     # Indicates whether token rotation is enabled
+
+  # Configuration for interactive components like buttons and modals
+  interactivity:
+    is_enabled: true
+    request_url: {{ endpoint_url }}/v1/slack/interactivity
+
+  # Event subscriptions to receive specific events from Slack
+  event_subscriptions:
+    request_url: {{ endpoint_url }}/v1/slack/events
+    bot_events:
+      - message.channels   # Messages sent in public channels
+      - message.im         # Messages sent in direct messages
+      - app_mention        # Events where the app is mentioned
