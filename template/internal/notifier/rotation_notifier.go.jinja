@@ -62,7 +62,7 @@ func (n *RotationNotifier) AnnounceRotation(rotation *repository.Rotation, dmPar
 	
 	// Direct message to relevant parties if requested
 	if dmParticipants {
-		// DM current owner
+	// DM current owner
 		_, _, currentOwnerErr := n.slackClient.PostMessage(
 			rotation.CurrentOwner,
 			slack.MsgOptionText(fmt.Sprintf("*Reminder:* You are the current owner of rotation `%s` until %s.", 

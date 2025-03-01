@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/slack-go/slack"
 	"{{ github_path }}/internal/repository"
@@ -41,6 +42,24 @@ func (c *RemoveCommand) HelpBlocks() []slack.Block {
 	}
 }
 
+// extractUserIDs converts a slice of mentions to userIDs and tracks invalid mentions
+func (c *RemoveCommand) extractUserIDs(mentions []string) ([]string, []string) {
+	userIDs := make([]string, 0, len(mentions))
+
+	var invalidMentions []string
+	
+	for _, mention := range mentions {
+		userID, err := extractUserIDFromMention(mention)
+		if err != nil {
+			invalidMentions = append(invalidMentions, mention)
+			continue
+		}
+		userIDs = append(userIDs, userID)
+	}
+	
+	return userIDs, invalidMentions
+}
+
 func (c *RemoveCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
 	if len(args) < 2 {
 		return slack.Msg{
@@ -56,40 +75,58 @@ func (c *RemoveCommand) modifyRotationMembers(ctx context.Context, teamID, label
 	r, err := c.repo.GetRotation(ctx, teamID, label)
 
 	if err != nil || r == nil {
-		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
+		return slack.Msg{ //nolint:nilerr
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text: fmt.Sprintf("Rotation `%s` not found", label),
+		}, nil
+	}
+
+	// Extract user IDs from mentions first
+	userIDs, invalidMentions := c.extractUserIDs(userMentions)
+	
+	if len(invalidMentions) > 0 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text: fmt.Sprintf("Invalid user mentions: %s", strings.Join(invalidMentions, ", ")),
+		}, nil
 	}
 
 	if action == "add" {
-		for _, u := range userMentions {
-			userID, err := extractUserIDFromMention(u)
-
-			if err != nil {
-				return slack.Msg{ //nolint:nilerr
-					ResponseType: slack.ResponseTypeEphemeral,
-					Text:         fmt.Sprintf("Invalid user mention: %s", u),
-				}, nil
-			}
-
+		for _, userID := range userIDs {
 			if !contains(r.RotationOrder, userID) {
 				r.RotationOrder = append(r.RotationOrder, userID)
 			}
 		}
 	} else {
+		// For remove action
 		filtered := []string{}
+		removedUsers := []string{}
 
 		for _, member := range r.RotationOrder {
-			if !contains(userMentions, member) {
+			if contains(userIDs, member) {
+				removedUsers = append(removedUsers, member)
+			} else {
 				filtered = append(filtered, member)
 			}
 		}
-
+		
+		// Check if any users were actually removed
+		if len(removedUsers) == 0 {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text: fmt.Sprintf("None of the specified users were found in rotation `%s`.", label),
+			}, nil
+		}
+		
 		r.RotationOrder = filtered
 	}
 
 	if err := c.repo.UpsertRotation(ctx, *r); err != nil {
-		return slack.Msg{}, err
+		return slack.Msg{}, fmt.Errorf("failed to update rotation: %w", err)
 	}
 
-	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
-		Text: fmt.Sprintf("Rotation `%s` members updated.", label)}, nil
+	return slack.Msg{
+		ResponseType: slack.ResponseTypeInChannel,
+		Text: fmt.Sprintf("Rotation `%s` members updated.", label),
+	}, nil
 }

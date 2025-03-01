@@ -95,6 +95,12 @@ func (c *RotationCommand) registerSubCommands() {
 func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashCommand) (slack.Msg, error) {
 	args := strings.Fields(strings.TrimSpace(cmd.Text))
 
+	c.logger.Debug().
+		Str("command", cmd.Command).
+		Str("text", cmd.Text).
+		Strs("parsed_args", args).
+		Msg("Handling rotation command")
+
 	if len(args) == 0 {
 		// Show general help with all available commands
 		blocks := []slack.Block{
@@ -157,6 +163,10 @@ func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 	// Execute the requested command
 	cmdName := strings.ToLower(args[0])
 	if subCmd, ok := c.commands[cmdName]; ok {
+		c.logger.Debug().
+			Str("subcommand", cmdName).
+			Strs("args", args[1:]).
+			Msg("Executing rotation subcommand")
 		return subCmd.Execute(ctx, cmd, args[1:])
 	}
 

@@ -3,11 +3,13 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/slack-go/slack"
 	"{{ github_path }}/internal/notifier"
 	"{{ github_path }}/internal/repository"
 )
+
 
 // AnnounceCommand handles announcing rotation status
 type AnnounceCommand struct {
@@ -67,6 +69,13 @@ func (c *AnnounceCommand) Execute(ctx context.Context, cmd slack.SlashCommand, a
 	// Use the notifier to announce
 	_, err = c.notifier.AnnounceRotation(r, sendDM)
 	if err != nil {
+		// Check for the specific "not_in_channel" error
+		if strings.Contains(err.Error(), "not_in_channel") {
+			return slack.Msg{
+				ResponseType: slack.ResponseTypeEphemeral,
+				Text: fmt.Sprintf("I'm not in the channel for rotation `%s`. Please add me to the channel by mentioning me (e.g., @YourBotName) in the channel.", label),
+			}, nil
+		}
 		return slack.Msg{}, fmt.Errorf("failed to announce rotation: %w", err)
 	}
 
