@@ -174,3 +174,21 @@ func (r *DynamoDBRotationRepository) ListRotations(ctx context.Context, teamID s
 
 	return rotations, output.LastEvaluatedKey, nil
 }
+
+// DeleteRotation deletes a rotation by team ID and rotation label.
+func (r *DynamoDBRotationRepository) DeleteRotation(ctx context.Context, teamID, rotationLabel string) error {
+	input := &dynamodb.DeleteItemInput{
+		TableName: aws.String(r.tableName),
+		Key: map[string]types.AttributeValue{
+			"creator_team_id": &types.AttributeValueMemberS{Value: teamID},
+			"rotation_label":  &types.AttributeValueMemberS{Value: rotationLabel},
+		},
+	}
+
+	_, err := r.client.DeleteItem(ctx, input)
+	if err != nil {
+		return fmt.Errorf("failed to delete rotation: %w", err)
+	}
+
+	return nil
+}

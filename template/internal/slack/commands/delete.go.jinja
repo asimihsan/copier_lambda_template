@@ -1,0 +1,76 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/slack-go/slack"
+	"{{ github_path }}/internal/repository"
+)
+
+// DeleteCommand implements the RotationSubCommand interface.
+type DeleteCommand struct {
+	repo repository.RotationRepository
+}
+
+// NewDeleteCommand creates a new DeleteCommand.
+func NewDeleteCommand(repo repository.RotationRepository) *DeleteCommand {
+	return &DeleteCommand{
+		repo: repo,
+	}
+}
+
+func (c *DeleteCommand) Name() string {
+	return "delete"
+}
+
+func (c *DeleteCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Delete Rotation Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation delete <label>`", false, false),
+			nil, nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Permanently deletes a rotation. This action cannot be undone.", false, false),
+			nil, nil,
+		),
+	}
+}
+
+func (c *DeleteCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) < 1 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+	
+	label := args[0]
+	
+	// Check if rotation exists first
+	rotation, err := c.repo.GetRotation(ctx, cmd.TeamID, label)
+	if err != nil {
+		return slack.Msg{}, err
+	}
+	
+	if rotation == nil {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Text:         fmt.Sprintf("Rotation `%s` not found.", label),
+		}, nil
+	}
+	
+	// Delete the rotation
+	err = c.repo.DeleteRotation(ctx, cmd.TeamID, label)
+	if err != nil {
+		return slack.Msg{}, err
+	}
+	
+	return slack.Msg{
+		ResponseType: slack.ResponseTypeInChannel,
+		Text:         fmt.Sprintf("Rotation `%s` has been deleted.", label),
+	}, nil
+}

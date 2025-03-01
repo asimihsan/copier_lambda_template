@@ -85,6 +85,7 @@ func (c *RotationCommand) registerSubCommands() {
 		commands.NewTickCommand(c.tickProcessor, c.logger),
 		commands.NewStartCommand(c.repo),
 		commands.NewAnnounceCommand(c.repo, c.notifier),
+		commands.NewDeleteCommand(c.repo),
 	}
 	
 	for _, cmd := range subCommands {
@@ -122,13 +123,15 @@ func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 
 		// Build command list text
 		cmds := lo.Keys(c.commands)
+
 		sort.Strings(cmds)
+
 		var cmdList string
 		for _, name := range cmds {
 			cmdList += fmt.Sprintf("• `%s`\n", name)
 		}
-		
-		blocks = append(blocks, 
+
+		blocks = append(blocks,
 			slack.NewSectionBlock(
 				slack.NewTextBlockObject("mrkdwn", cmdList, false, false),
 				nil,
@@ -140,37 +143,100 @@ func (c *RotationCommand) HandleCommand(ctx context.Context, cmd slack.SlashComm
 				nil,
 				nil,
 			),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject("mrkdwn", "To see detailed help for all commands at once, use `/rotation help all`.", false, false),
+				nil,
+				nil,
+			),
 		)
 
 		return slack.Msg{
 			ResponseType: slack.ResponseTypeEphemeral,
-			Blocks: slack.Blocks{BlockSet: blocks},
+			Blocks:       slack.Blocks{BlockSet: blocks},
 		}, nil
 	}
 
 	// Check if this is a help request for a specific command
 	if strings.ToLower(args[0]) == "help" && len(args) > 1 {
 		cmdName := strings.ToLower(args[1])
+
+		// Special case for "help all" to show detailed help for all commands
+		if cmdName == "all" {
+			if cmd.ChannelName == "directmessage" {
+				blocks := []slack.Block{
+					slack.NewHeaderBlock(
+						slack.NewTextBlockObject("plain_text", "Detailed Help for All Commands", false, false),
+					),
+				}
+
+				// Get sorted command names
+				cmdNames := make([]string, 0, len(c.commands))
+
+				for name := range c.commands {
+					cmdNames = append(cmdNames, name)
+				}
+
+				sort.Strings(cmdNames)
+
+				// Add help blocks for each command
+				for _, name := range cmdNames {
+					blocks = append(blocks, slack.NewDividerBlock())
+					blocks = append(blocks, slack.NewHeaderBlock(
+						slack.NewTextBlockObject("plain_text", "Command: "+name, false, false),
+					))
+
+					blocks = append(blocks, c.commands[name].HelpBlocks()...)
+				}
+
+				// Split blocks into groups of 10
+				helpBlocksGroups := lo.Chunk(blocks, 10)
+
+				for _, helpBlocks := range helpBlocksGroups {
+					err := c.sendDirectMessages(ctx, cmd.UserID, helpBlocks)
+					if err != nil {
+						return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Failed to send help messages."}, err
+					}
+				}
+
+				// Respond to the slash command
+				return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Help information has been sent to your direct messages."}, nil
+			} else {
+				// Inform the user to use the command in a direct message
+				return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Please use this command in a direct message to receive detailed help information."}, nil
+			}
+		}
+
+		// Regular command help
 		if subCmd, ok := c.commands[cmdName]; ok {
 			return slack.Msg{
 				ResponseType: slack.ResponseTypeEphemeral,
-				Blocks: slack.Blocks{BlockSet: subCmd.HelpBlocks()},
+				Blocks:       slack.Blocks{BlockSet: subCmd.HelpBlocks()},
 			}, nil
 		}
+
 		return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Unknown command: " + cmdName}, nil
 	}
 
 	// Execute the requested command
 	cmdName := strings.ToLower(args[0])
+
 	if subCmd, ok := c.commands[cmdName]; ok {
 		c.logger.Debug().
 			Str("subcommand", cmdName).
 			Strs("args", args[1:]).
 			Msg("Executing rotation subcommand")
+
 		return subCmd.Execute(ctx, cmd, args[1:])
 	}
 
 	return slack.Msg{ResponseType: slack.ResponseTypeEphemeral, Text: "Invalid rotation command."}, nil
 }
 
-// (The command implementations were moved to individual files under /commands)
+func (c *RotationCommand) sendDirectMessages(ctx context.Context, userID string, blocks []slack.Block) error {
+	_, _, err := c.slackClient.PostMessageContext(ctx, userID, slack.MsgOptionBlocks(blocks...))
+	if err != nil {
+		return fmt.Errorf("failed to send message to user %s: %w", userID, err)
+	}
+
+	return nil
+}

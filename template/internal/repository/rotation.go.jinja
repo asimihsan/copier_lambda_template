@@ -34,4 +34,6 @@ type RotationRepository interface {
 	UpsertRotation(ctx context.Context, rotation Rotation) error
 	// ListRotations lists all rotations for a given team with pagination support.
 	ListRotations(ctx context.Context, teamID string, limit int32, lastEvaluatedKey map[string]types.AttributeValue) ([]Rotation, map[string]types.AttributeValue, error)
+	// DeleteRotation removes a rotation by its team ID and label.
+	DeleteRotation(ctx context.Context, teamID, rotationLabel string) error
 }
