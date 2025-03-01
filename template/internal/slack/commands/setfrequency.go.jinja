@@ -6,6 +6,7 @@ import (
 
 	"github.com/slack-go/slack"
 	"{{ github_path }}/internal/repository"
+	"{{ github_path }}/internal/rotationutil"
 )
 
 // SetFrequencyCommand handles the "setfrequency" subcommand
@@ -61,7 +62,7 @@ func (c *SetFrequencyCommand) setFrequency(ctx context.Context, teamID, label, f
 	}
 
 	r.Frequency = frequency
-	r.NextRotationDate = calculateNextRotationDate(r.LastRotationDate, frequency)
+	r.NextRotationDate = rotationutil.CalculateNextRotationDate(r.LastRotationDate, frequency)
 
 	if err := c.repo.UpsertRotation(ctx, *r); err != nil {
 		return slack.Msg{}, err

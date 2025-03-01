@@ -88,6 +88,11 @@ func New(config *config.Config, si handler.ServerInterface) *Server {
 		return si.PostV1SlackEvents(c)
 	})
 
+	// Add health check endpoint
+	e.GET("/ping", func(c echo.Context) error {
+		return c.String(http.StatusOK, "healthy")
+	})
+
 	return &Server{
 		echo:   e,
 		config: config,

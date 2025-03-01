@@ -13,6 +13,7 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
+	"{{ github_path }}/internal/notifier"
 	"{{ github_path }}/internal/repository"
 	"{{ github_path }}/internal/tick"
 )
@@ -48,6 +49,7 @@ type TickHandler struct {
 	ScheduleRepo repository.RotationScheduleRepository
 	RotationRepo repository.RotationRepository
 	SlackNotifier SlackNotifier
+	RotationNotifier *notifier.RotationNotifier
 }
 
 // NewTickHandler creates a new tick handler
@@ -141,8 +143,6 @@ func (h *TickHandler) ProcessTick(ctx context.Context, teamID string) error {
 		case "reminder":
 			msg = fmt.Sprintf("Reminder: rotation handover to <@%s> in 24 hours.", event.NextOwner)
 		case "handover":
-			msg = fmt.Sprintf("Rotation handover now to <@%s>.", event.NextOwner)
-			
 			teamID, rotationLabel := extractRotationComponents(event.RotationID)
 			if err := h.RotationRepo.AdvanceRotation(ctx, teamID, rotationLabel); err != nil {
 				log.Error().
@@ -152,6 +152,24 @@ func (h *TickHandler) ProcessTick(ctx context.Context, teamID string) error {
 					Msg("Failed to advance rotation")
 				continue
 			}
+			
+			// Get the updated rotation and use the notifier for a richer message
+			updatedRotation, err := h.RotationRepo.GetRotation(ctx, teamID, rotationLabel)
+			if err == nil && updatedRotation != nil && h.RotationNotifier != nil {
+				// Announce with DMs on handover
+				_, err := h.RotationNotifier.AnnounceRotation(updatedRotation, true)
+				if err != nil {
+					log.Error().
+						Err(err).
+						Str("rotationID", event.RotationID).
+						Msg("Failed to announce rotation")
+				}
+				// Skip the old channel notification since we've sent the enhanced one
+				continue
+			}
+			
+			// Fallback to old simple message if we couldn't get rotation info
+			msg = fmt.Sprintf("Rotation handover now to <@%s>.", event.NextOwner)
 		default:
 			log.Warn().Str("action", event.Action).Msg("Unknown action type")
 			continue

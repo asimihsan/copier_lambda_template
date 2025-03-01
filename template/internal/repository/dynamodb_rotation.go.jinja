@@ -10,6 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/rs/zerolog/log"
+
+	"{{ github_path }}/internal/rotationutil"
 )
 
 type DynamoDBRotationRepository struct {
@@ -89,7 +91,7 @@ func (r *DynamoDBRotationRepository) AdvanceRotation(ctx context.Context, teamID
 
 	rotation.CurrentOwner = rotation.RotationOrder[nextIndex]
 	rotation.LastRotationDate = time.Now()
-	rotation.NextRotationDate = calculateNextRotationDate(rotation.LastRotationDate, rotation.Frequency)
+	rotation.NextRotationDate = rotationutil.CalculateNextRotationDate(rotation.LastRotationDate, rotation.Frequency)
 
 	// Save the updated rotation.
 	item, err := attributevalue.MarshalMap(rotation)
@@ -171,24 +173,4 @@ func (r *DynamoDBRotationRepository) ListRotations(ctx context.Context, teamID s
 	}
 
 	return rotations, output.LastEvaluatedKey, nil
-}
-
-// Helper to calculate the next rotation date.
-func calculateNextRotationDate(lastDate time.Time, frequency string) time.Time {
-	switch frequency {
-	case "daily":
-		return lastDate.AddDate(0, 0, 1) //nolint:mnd
-
-	case "weekly":
-		return lastDate.AddDate(0, 0, 7) //nolint:mnd
-
-	case "biweekly":
-		return lastDate.AddDate(0, 0, 14) //nolint:mnd
-
-	case "monthly":
-		return lastDate.AddDate(0, 1, 0) //nolint:mnd
-
-	default:
-		return lastDate.AddDate(0, 0, 7) //nolint:mnd
-	}
 }

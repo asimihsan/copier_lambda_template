@@ -7,6 +7,7 @@ import (
 
 	"github.com/slack-go/slack"
 	"{{ github_path }}/internal/repository"
+	"{{ github_path }}/internal/rotationutil"
 )
 
 // CreateCommand implements the RotationSubCommand interface.
@@ -87,7 +88,7 @@ func (c *CreateCommand) createRotation(ctx context.Context, cmd slack.SlashComma
 		CurrentOwner:     users[0],
 		RotationOrder:    users,
 		LastRotationDate: time.Now(),
-		NextRotationDate: calculateNextRotationDate(time.Now(), frequency),
+		NextRotationDate: rotationutil.CalculateNextRotationDate(time.Now(), frequency),
 		CreatorUserID:    cmd.UserID,
 		CreatorUserName:  user.Name,
 	}

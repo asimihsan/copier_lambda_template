@@ -6,6 +6,7 @@ import (
 
 	"github.com/slack-go/slack"
 	"{{ github_path }}/internal/repository"
+	"{{ github_path }}/internal/rotationutil"
 )
 
 // SetOwnerCommand handles the "setowner" subcommand
@@ -77,7 +78,7 @@ func (c *SetOwnerCommand) setOwner(ctx context.Context, teamID, label, userMenti
 	}
 
 	r.CurrentOwner = userID
-	r.NextRotationDate = calculateNextRotationDate(r.LastRotationDate, r.Frequency)
+	r.NextRotationDate = rotationutil.CalculateNextRotationDate(r.LastRotationDate, r.Frequency)
 
 	if err := c.repo.UpsertRotation(ctx, *r); err != nil {
 		return slack.Msg{}, err

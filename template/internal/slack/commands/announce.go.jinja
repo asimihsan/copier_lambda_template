@@ -1,0 +1,77 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/slack-go/slack"
+	"{{ github_path }}/internal/notifier"
+	"{{ github_path }}/internal/repository"
+)
+
+// AnnounceCommand handles announcing rotation status
+type AnnounceCommand struct {
+	repo     repository.RotationRepository
+	notifier *notifier.RotationNotifier
+}
+
+func NewAnnounceCommand(repo repository.RotationRepository, notifier *notifier.RotationNotifier) *AnnounceCommand {
+	return &AnnounceCommand{
+		repo:     repo,
+		notifier: notifier,
+	}
+}
+
+func (c *AnnounceCommand) Name() string {
+	return "announce"
+}
+
+func (c *AnnounceCommand) HelpBlocks() []slack.Block {
+	return []slack.Block{
+		slack.NewHeaderBlock(
+			slack.NewTextBlockObject("plain_text", "Announce Help", false, false),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "*Usage:* `/rotation announce <label> [nodm]`", false, false),
+			nil,
+			nil,
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", "Announces the current rotation status. Add 'nodm' to avoid sending direct messages to participants.", false, false),
+			nil,
+			nil,
+		),
+	}
+}
+
+func (c *AnnounceCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args []string) (slack.Msg, error) {
+	if len(args) < 1 {
+		return slack.Msg{
+			ResponseType: slack.ResponseTypeEphemeral,
+			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
+		}, nil
+	}
+
+	label := args[0]
+	r, err := c.repo.GetRotation(ctx, cmd.TeamID, label)
+	if err != nil || r == nil {
+		return slack.Msg{}, fmt.Errorf("rotation `%s` not found", label)
+	}
+
+	// Check if DM should be sent
+	sendDM := true
+	if len(args) > 1 && args[1] == "nodm" {
+		sendDM = false
+	}
+
+	// Use the notifier to announce
+	_, err = c.notifier.AnnounceRotation(r, sendDM)
+	if err != nil {
+		return slack.Msg{}, fmt.Errorf("failed to announce rotation: %w", err)
+	}
+
+	return slack.Msg{
+		ResponseType: slack.ResponseTypeInChannel,
+		Text:         "Rotation announcement sent.",
+	}, nil
+}

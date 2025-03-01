@@ -11,9 +11,10 @@ RUN dnf update -y && \
 ENV MISE_CACHE_DIR=/var/cache/mise
 ENV MISE_DATA_DIR=/var/lib/mise
 ENV MISE_CONFIG_DIR=/etc/mise
+ENV MISE_ENV=production
 
 # Copy mise.toml first for better caching
-COPY mise.toml /app/mise.toml
+COPY mise.production.toml /app/mise.production.toml
 
 # Install mise and set up environment
 RUN --mount=type=cache,target=/var/cache/mise \
@@ -22,9 +23,6 @@ RUN --mount=type=cache,target=/var/cache/mise \
     . ~/.bashrc && \
     cd /app && \
     mise trust && \
-    mise use -g 'python@prefix:3.12' && \
-    mise x python -- pip install -U pip && \
-    mise x python -- pip install --user pipx && \
     mise install
 
 ARG TARGETPLATFORM
@@ -49,31 +47,35 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     . ~/.bashrc && \
-    go build -o /tmp/bootstrap -tags lambda.norpc -ldflags="-s -w" ./cmd/server
+    go build -o /tmp/bootstrap -tags lambda.norpc -ldflags="-s -w -extldflags '-static'" -trimpath ./cmd/server
 
-FROM public.ecr.aws/lambda/provided:al2023 as final
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal as final
 
 ADD https://lambda-insights-extension-arm64.s3-ap-northeast-1.amazonaws.com/amazon_linux/lambda-insights-extension-arm64.rpm /tmp/lambda-insights-extension-arm64.rpm
 
 RUN dnf update -y && \
-    dnf install -y \
-    ca-certificates && \
+    dnf -y install \
+        ca-certificates && \
     # Create a non-root user manually
     echo "appuser:x:10001:10001::/home/appuser:/sbin/nologin" >> /etc/passwd && \
     echo "appuser:x:10001:" >> /etc/group && \
     mkdir -p /home/appuser && \
     # Install the Lambda Insights extension
     rpm -U /tmp/lambda-insights-extension-arm64.rpm && \
-    rm -f /tmp/lambda-insights-extension-arm64.rpm
+    rm -f /tmp/lambda-insights-extension-arm64.rpm && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
 
+ENV AWS_LWA_READINESS_CHECK_PATH="/ping"
+ENV AWS_LWA_ENABLE_COMPRESSION="true"
+ENV AWS_LWA_PASS_THROUGH_PATH="/v1/events"
 COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.0 /lambda-adapter /opt/extensions/lambda-adapter
-COPY --from=build --chown=appuser:appuser /tmp/bootstrap /var/runtime/bootstrap
 
+COPY --from=build --chown=appuser:appuser /tmp/bootstrap /bootstrap
 ENV PORT=7001
 EXPOSE 7001
 
 # Switch to the non-root user
 USER 10001
 
-WORKDIR /var/task
-CMD ["bootstrap"]
+CMD ["/bootstrap"]

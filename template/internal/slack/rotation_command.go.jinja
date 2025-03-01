@@ -10,9 +10,10 @@ import (
 	"github.com/samber/lo"
 	"github.com/slack-go/slack"
 
+	"{{ github_path }}/internal/notifier"
+	"{{ github_path }}/internal/repository"
 	"{{ github_path }}/internal/slack/commands"
 	"{{ github_path }}/internal/tick"
-	"{{ github_path }}/internal/repository"
 )
 
 // RotationSubCommand defines the interface for all rotation subcommands
@@ -41,6 +42,7 @@ type RotationCommand struct {
 	slackClient   *slack.Client // used for querying user info
 	tickProcessor tick.Processor
 	logger        zerolog.Logger
+	notifier      *notifier.RotationNotifier
 	
 	// Registry of subcommands indexed by command name
 	commands map[string]RotationSubCommand
@@ -49,11 +51,14 @@ type RotationCommand struct {
 var _ SlackCommandHandler = (*RotationCommand)(nil)
 
 func NewRotationCommand(repo repository.RotationRepository, slackClient *slack.Client, tickProcessor tick.Processor, logger zerolog.Logger) *RotationCommand {
+	notifier := notifier.NewRotationNotifier(slackClient)
+	
 	cmd := &RotationCommand{
 		repo:          repo,
 		slackClient:   slackClient,
 		tickProcessor: tickProcessor,
 		logger:        logger,
+		notifier:      notifier,
 		commands:      make(map[string]RotationSubCommand),
 	}
 	
@@ -67,7 +72,7 @@ func NewRotationCommand(repo repository.RotationRepository, slackClient *slack.C
 func (c *RotationCommand) registerSubCommands() {
 	subCommands := []RotationSubCommand{
 		commands.NewCreateCommand(c.repo, c.slackClient),
-		commands.NewShowCommand(c.repo),
+		commands.NewShowCommand(c.repo, c.slackClient),
 		commands.NewNextCommand(c.repo),
 		commands.NewAddCommand(c.repo),
 		commands.NewRemoveCommand(c.repo),
@@ -77,8 +82,9 @@ func (c *RotationCommand) registerSubCommands() {
 		commands.NewSetOwnerCommand(c.repo, c.slackClient),
 		commands.NewListCommand(c.repo),
 		commands.NewSetChannelCommand(c.repo),
-		commands.NewTickCommand(c.tickProcessor, c.logger), // NEW: Added TickCommand subcommand.
-		commands.NewStartCommand(c.repo), // NEW: Added Start command to set rotation start
+		commands.NewTickCommand(c.tickProcessor, c.logger),
+		commands.NewStartCommand(c.repo),
+		commands.NewAnnounceCommand(c.repo, c.notifier),
 	}
 	
 	for _, cmd := range subCommands {

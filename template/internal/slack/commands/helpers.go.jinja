@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 	"regexp"
-	"time"
 
 	"{{ github_path }}/internal/repository"
 )
@@ -32,26 +31,6 @@ func remove(slice []string, s string) []string {
 	}
 
 	return filtered
-}
-
-// calculateNextRotationDate determines the next rotation date based on frequency
-func calculateNextRotationDate(lastDate time.Time, frequency string) time.Time {
-	switch frequency {
-	case "daily":
-		return lastDate.AddDate(0, 0, 1)
-
-	case "weekly":
-		return lastDate.AddDate(0, 0, 7)
-
-	case "biweekly":
-		return lastDate.AddDate(0, 0, 14)
-
-	case "monthly":
-		return lastDate.AddDate(0, 1, 0)
-
-	default:
-		return lastDate.AddDate(0, 0, 7)
-	}
 }
 
 // nextOwner determines who will be the next owner in the rotation

@@ -6,43 +6,46 @@ provider "aws" {
   region = var.region
 }
 
-resource "aws_ecr_repository" "example" {
+resource "aws_ecr_repository" "{{ project_name }}" {
   name                 = var.project_prefix
   image_tag_mutability = "IMMUTABLE"
   image_scanning_configuration {
     scan_on_push = true
   }
   force_delete = false
+}
 
-  lifecycle_policy {
-    policy = jsonencode({
-      rules = [
-        {
-          rulePriority = 1
-          description  = "Expire untagged images older than 2 days"
-          selection = {
-            tagStatus   = "untagged"
-            countType   = "sinceImagePushed"
-            countUnit   = "days"
-            countNumber = 2
-          }
-          action = {
-            type = "expire"
-          }
-        },
-        {
-          rulePriority = 2
-          description  = "Keep only the 10 most recent tagged images"
-          selection = {
-            tagStatus   = "tagged"
-            countType   = "imageCountMoreThan"
-            countNumber = 10
-          }
-          action = {
-            type = "expire"
-          }
+resource "aws_ecr_lifecycle_policy" "{{ project_name }}_policy" {
+  repository = aws_ecr_repository.{{ project_name }}.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Expire untagged images older than 2 days"
+        selection = {
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = 2
         }
-      ]
-    })
-  }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        rulePriority = 2
+        description  = "Keep only the 10 most recent tagged images per function"
+        selection = {
+          tagStatus     = "tagged"
+          tagPatternList = ["*-latest"]  # Match the suffix pattern instead of prefix
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
 }

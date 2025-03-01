@@ -7,6 +7,7 @@ import (
 
 	"github.com/slack-go/slack"
 	"{{ github_path }}/internal/repository"
+	"{{ github_path }}/internal/rotationutil"
 )
 
 // StartCommand sets the rotation's start date to today at midnight UTC.
@@ -70,7 +71,7 @@ func (c *StartCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args
 	}
 
 	rotation.LastRotationDate = startDate
-	rotation.NextRotationDate = calculateNextRotationDate(startDate, rotation.Frequency)
+	rotation.NextRotationDate = rotationutil.CalculateNextRotationDate(startDate, rotation.Frequency)
 
 	if err := c.repo.UpsertRotation(ctx, *rotation); err != nil {
 		return slack.Msg{}, err

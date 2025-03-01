@@ -6,16 +6,19 @@ import (
 
 	"github.com/slack-go/slack"
 	"{{ github_path }}/internal/repository"
+	"{{ github_path }}/internal/rotationutil"
 )
 
 // ShowCommand handles the "show" subcommand
 type ShowCommand struct {
-	repo repository.RotationRepository
+	repo        repository.RotationRepository
+	slackClient *slack.Client
 }
 
-func NewShowCommand(repo repository.RotationRepository) *ShowCommand {
+func NewShowCommand(repo repository.RotationRepository, slackClient *slack.Client) *ShowCommand {
 	return &ShowCommand{
-		repo: repo,
+		repo:        repo,
+		slackClient: slackClient,
 	}
 }
 
@@ -48,7 +51,7 @@ func (c *ShowCommand) Execute(ctx context.Context, cmd slack.SlashCommand, args 
 			Blocks:       slack.Blocks{BlockSet: c.HelpBlocks()},
 		}, nil
 	}
-	
+
 	return c.showRotation(ctx, cmd.TeamID, args[0])
 }
 
@@ -59,6 +62,107 @@ func (c *ShowCommand) showRotation(ctx context.Context, teamID, label string) (s
 		return slack.Msg{}, fmt.Errorf("Rotation `%s` not found", label)
 	}
 
-	return slack.Msg{ResponseType: slack.ResponseTypeInChannel,
-		Text: fmt.Sprintf("Rotation `%s`: current owner <@%s>, next <@%s>", label, r.CurrentOwner, nextOwner(r))}, nil
+	// Determine the current owner's index within the rotation order.
+	currentIndex := 0
+
+	for i, owner := range r.RotationOrder {
+		if owner == r.CurrentOwner {
+			currentIndex = i
+			break
+		}
+	}
+
+	numOwners := len(r.RotationOrder)
+
+	// Fetch user information for all members to display proper names
+	userInfoMap := make(map[string]string)
+	for _, userID := range r.RotationOrder {
+		// Default to user ID in case we can't fetch the information
+		userInfoMap[userID] = userID
+		
+		// Try to get user info from Slack
+		user, err := c.slackClient.GetUserInfo(userID)
+		if err == nil && user != nil {
+			// Use display name if available, otherwise real name or username
+			if user.Profile.DisplayName != "" { //nolint:gocritic
+				userInfoMap[userID] = user.Profile.DisplayName
+			} else if user.RealName != "" {
+				userInfoMap[userID] = user.RealName
+			} else {
+				userInfoMap[userID] = user.Name
+			}
+		}
+	}
+
+	// Build a table (as a code block) for the upcoming rotation schedule.
+	table := "```\n"
+
+	table += fmt.Sprintf("%-18s %-12s %-12s\n", "Member", "From Date", "To Date")
+	table += "---------------------------------------------\n"
+
+	scheduleFrom := r.LastRotationDate
+	scheduleTo := r.NextRotationDate
+
+	for i := 0; i < numOwners; i++ {
+		idx := (currentIndex + i) % numOwners
+		userID := r.RotationOrder[idx]
+		userName := userInfoMap[userID]
+		
+		prefix := "   " // Default 3-space padding for alignment
+		if userID == r.CurrentOwner {
+			prefix = ">> "
+		}
+
+		table += fmt.Sprintf("%s%-15s %-12s %-12s\n", prefix, userName,
+			scheduleFrom.Format("2006-01-02"), scheduleTo.Format("2006-01-02"))
+		scheduleFrom = scheduleTo
+		scheduleTo = rotationutil.CalculateNextRotationDate(scheduleFrom, r.Frequency)
+	}
+
+	table += "```"
+
+	// Get next owner and their dates
+	nextOwnerIndex := (currentIndex + 1) % numOwners
+	nextOwner := r.RotationOrder[nextOwnerIndex]
+	nextOwnerFrom := r.NextRotationDate
+	nextOwnerTo := rotationutil.CalculateNextRotationDate(nextOwnerFrom, r.Frequency)
+	
+	// Build the summary text including dates for current and next owner
+	channelInfo := "none"
+	if r.SlackChannelID != "" {
+		channelInfo = fmt.Sprintf("<#%s>", r.SlackChannelID)
+	}
+
+	summaryText := fmt.Sprintf("Rotation `%s`:\n• Current owner: <@%s> (%s to %s)\n• Next owner: <@%s> (%s to %s)\n• Channel: %s\n• Frequency: %s",
+		r.RotationLabel, 
+		r.CurrentOwner, 
+		r.LastRotationDate.Format("2006-01-02"), 
+		r.NextRotationDate.Format("2006-01-02"),
+		nextOwner,
+		nextOwnerFrom.Format("2006-01-02"),
+		nextOwnerTo.Format("2006-01-02"),
+		channelInfo,
+		r.Frequency)
+
+	// Create Slack blocks: one for the summary and one for the schedule table.
+	summaryBlock := slack.NewSectionBlock(
+		slack.NewTextBlockObject("mrkdwn", summaryText, false, false),
+		nil,
+		nil,
+	)
+	tableBlock := slack.NewSectionBlock(
+		slack.NewTextBlockObject("mrkdwn", table, false, false),
+		nil,
+		nil,
+	)
+	blocks := []slack.Block{
+		summaryBlock,
+		slack.NewDividerBlock(),
+		tableBlock,
+	}
+
+	return slack.Msg{
+		ResponseType: slack.ResponseTypeInChannel,
+		Blocks:       slack.Blocks{BlockSet: blocks},
+	}, nil
 }
