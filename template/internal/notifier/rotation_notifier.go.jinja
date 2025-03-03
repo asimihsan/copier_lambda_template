@@ -2,6 +2,7 @@ package notifier
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/slack-go/slack"
@@ -38,17 +39,37 @@ func (n *RotationNotifier) AnnounceRotation(rotation *repository.Rotation, dmPar
 	nextOwnerFrom := rotation.NextRotationDate
 	nextOwnerTo := rotationutil.CalculateNextRotationDate(nextOwnerFrom, rotation.Frequency)
 	
-	// Format the announcement message
-	msg := fmt.Sprintf("🔄 *Rotation Update: `%s`*\n\n", rotation.RotationLabel)
-	msg += fmt.Sprintf("• *Current owner:* <@%s>\n", rotation.CurrentOwner)
-	msg += fmt.Sprintf("• *Current period:* %s to %s\n", 
-		rotation.LastRotationDate.Format("Mon, Jan 2 2006"), 
-		rotation.NextRotationDate.Format("Mon, Jan 2 2006"))
-	msg += fmt.Sprintf("• *Handover:* %s\n\n", rotation.NextRotationDate.Format("Mon, Jan 2 2006"))
-	msg += fmt.Sprintf("• *Next owner:* <@%s>\n", nextOwner)
-	msg += fmt.Sprintf("• *Next period:* %s to %s", 
-		nextOwnerFrom.Format("Mon, Jan 2 2006"), 
-		nextOwnerTo.Format("Mon, Jan 2 2006"))
+	// Check if rotation is in the future
+	now := time.Now()
+	isFutureRotation := rotation.LastRotationDate.After(now)
+	
+	// Format the announcement message based on whether it's a future rotation
+	var msg string
+	if isFutureRotation {
+		// Format the announcement message for future rotation
+		msg = fmt.Sprintf("🔄 *Rotation Update: `%s`*\n\n", rotation.RotationLabel)
+		msg += fmt.Sprintf("• *Next owner:* <@%s>\n", rotation.CurrentOwner)
+		msg += fmt.Sprintf("• *Next period:* %s to %s\n", 
+			rotation.LastRotationDate.Format("Mon, Jan 2 2006"), 
+			rotation.NextRotationDate.Format("Mon, Jan 2 2006"))
+		msg += fmt.Sprintf("• *Start date:* %s\n\n", rotation.LastRotationDate.Format("Mon, Jan 2 2006"))
+		msg += fmt.Sprintf("• *Following owner:* <@%s>\n", nextOwner)
+		msg += fmt.Sprintf("• *Following period:* %s to %s", 
+			nextOwnerFrom.Format("Mon, Jan 2 2006"), 
+			nextOwnerTo.Format("Mon, Jan 2 2006"))
+	} else {
+		// Format the announcement message for current rotation (original logic)
+		msg = fmt.Sprintf("🔄 *Rotation Update: `%s`*\n\n", rotation.RotationLabel)
+		msg += fmt.Sprintf("• *Current owner:* <@%s>\n", rotation.CurrentOwner)
+		msg += fmt.Sprintf("• *Current period:* %s to %s\n", 
+			rotation.LastRotationDate.Format("Mon, Jan 2 2006"), 
+			rotation.NextRotationDate.Format("Mon, Jan 2 2006"))
+		msg += fmt.Sprintf("• *Handover:* %s\n\n", rotation.NextRotationDate.Format("Mon, Jan 2 2006"))
+		msg += fmt.Sprintf("• *Next owner:* <@%s>\n", nextOwner)
+		msg += fmt.Sprintf("• *Next period:* %s to %s", 
+			nextOwnerFrom.Format("Mon, Jan 2 2006"), 
+			nextOwnerTo.Format("Mon, Jan 2 2006"))
+	}
 	
 	// Send to channel if configured
 	var result error
@@ -59,34 +80,63 @@ func (n *RotationNotifier) AnnounceRotation(rotation *repository.Rotation, dmPar
 		)
 
 		if channelErr != nil {
-			result = multierror.Append(result, channelErr)
+			// Check for specific Slack channel errors
+			if channelErr.Error() == "channel_not_found" || channelErr.Error() == "not_in_channel" {
+				// Instead of returning an error, append the information to the message
+				msg += fmt.Sprintf("\n\n⚠️ *Note:* Unable to post to the specified channel: %v. Please add the Slack app bot to the channel first before attempting to send notifications.", channelErr)
+			} else {
+				// Only append other errors to the multierror
+				result = multierror.Append(result, channelErr)
+			}
 		}
 	}
 	
 	// Direct message to relevant parties if requested
 	if dmParticipants {
-	// DM current owner
-		_, _, currentOwnerErr := n.slackClient.PostMessage(
-			rotation.CurrentOwner,
-			slack.MsgOptionText(fmt.Sprintf("*Reminder:* You are the current owner of rotation `%s` until %s.", 
-				rotation.RotationLabel, 
-				rotation.NextRotationDate.Format("Mon, Jan 2 2006")), 
-			false),
-		)
+		var currentOwnerErr, nextOwnerErr error
+		
+		if isFutureRotation {
+			// DM future owner
+			_, _, currentOwnerErr = n.slackClient.PostMessage(
+				rotation.CurrentOwner,
+				slack.MsgOptionText(fmt.Sprintf("*Heads up:* You will be the first owner of rotation `%s` starting on %s.", 
+					rotation.RotationLabel, 
+					rotation.LastRotationDate.Format("Mon, Jan 2 2006")), 
+				false),
+			)
+			
+			// DM following owner
+			_, _, nextOwnerErr = n.slackClient.PostMessage(
+				nextOwner,
+				slack.MsgOptionText(fmt.Sprintf("*Heads up:* You will become the owner of rotation `%s` on %s.", 
+					rotation.RotationLabel, 
+					rotation.NextRotationDate.Format("Mon, Jan 2 2006")), 
+				false),
+			)
+		} else {
+			// DM current owner (original logic)
+			_, _, currentOwnerErr = n.slackClient.PostMessage(
+				rotation.CurrentOwner,
+				slack.MsgOptionText(fmt.Sprintf("*Reminder:* You are the current owner of rotation `%s` until %s.", 
+					rotation.RotationLabel, 
+					rotation.NextRotationDate.Format("Mon, Jan 2 2006")), 
+				false),
+			)
+			
+			// DM next owner (original logic)
+			_, _, nextOwnerErr = n.slackClient.PostMessage(
+				nextOwner,
+				slack.MsgOptionText(fmt.Sprintf("*Heads up:* You will become the owner of rotation `%s` on %s.", 
+					rotation.RotationLabel, 
+					rotation.NextRotationDate.Format("Mon, Jan 2 2006")), 
+				false),
+			)
+		}
 
 		if currentOwnerErr != nil {
 			result = multierror.Append(result, currentOwnerErr)
 		}
 		
-		// DM next owner
-		_, _, nextOwnerErr := n.slackClient.PostMessage(
-			nextOwner,
-			slack.MsgOptionText(fmt.Sprintf("*Heads up:* You will become the owner of rotation `%s` on %s.", 
-				rotation.RotationLabel, 
-				rotation.NextRotationDate.Format("Mon, Jan 2 2006")), 
-			false),
-		)
-
 		if nextOwnerErr != nil {
 			result = multierror.Append(result, nextOwnerErr)
 		}
