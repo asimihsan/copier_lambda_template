@@ -1,0 +1,64 @@
+package commands
+
+import (
+	"testing"
+)
+
+func TestExtractChannelID(t *testing.T) {
+	tests := []struct {
+		name        string
+		mention     string
+		expectedID  string
+		expectError bool
+	}{
+		{
+			name:        "Public channel with name",
+			mention:     "<#C12345678|general>",
+			expectedID:  "C12345678",
+			expectError: false,
+		},
+		{
+			name:        "Private channel with name",
+			mention:     "<#G12345678|private-channel>",
+			expectedID:  "G12345678",
+			expectError: false,
+		},
+		{
+			name:        "Private channel without name",
+			mention:     "<#G07Q98J0XNC|>",
+			expectedID:  "G07Q98J0XNC",
+			expectError: false,
+		},
+		{
+			name:        "Invalid format - not a channel mention",
+			mention:     "this is not a channel",
+			expectedID:  "",
+			expectError: true,
+		},
+		{
+			name:        "Invalid format - user mention",
+			mention:     "<@U12345678|user>",
+			expectedID:  "",
+			expectError: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			id, err := extractChannelID(tc.mention)
+			
+			// Check error expectation
+			if tc.expectError && err == nil {
+				t.Errorf("Expected error, but got none")
+			}
+			if !tc.expectError && err != nil {
+				t.Errorf("Expected no error, but got: %v", err)
+			}
+			
+			// Check ID extraction
+			if id != tc.expectedID {
+				t.Errorf("Expected ID %q, got %q", tc.expectedID, id)
+			}
+		})
+	}
+}

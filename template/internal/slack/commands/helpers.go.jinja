@@ -7,6 +7,12 @@ import (
 	"{{ github_path }}/internal/repository"
 )
 
+// Precompiled regular expressions for better performance
+var (
+	userMentionRegex = regexp.MustCompile(`<@([UW][A-Z0-9]{8,})(?:\|[^>]+)?>`)
+	channelMentionRegex = regexp.MustCompile(`<#([CG][A-Z0-9]+)(?:\|[^>]*)?>`)
+)
+
 // Helper functions used by multiple commands
 
 // contains checks if a string slice contains a specific string
@@ -46,10 +52,7 @@ func nextOwner(r *repository.Rotation) string {
 
 // extractUserIDFromMention parses the Slack mention format and returns the user ID.
 func extractUserIDFromMention(mention string) (string, error) {
-	// Regular expression to match both <@USER_ID|username> and <@USER_ID> patterns
-	re := regexp.MustCompile(`<@([UW][A-Z0-9]{8,})(?:\|[^>]+)?>`)
-
-	match := re.FindStringSubmatch(mention)
+	match := userMentionRegex.FindStringSubmatch(mention)
 
 	if len(match) != 2 {
 		return "", fmt.Errorf("invalid mention format: %s", mention)
@@ -78,9 +81,10 @@ func extractUserIDs(mentions []string) ([]string, []string) {
 
 // extractChannelID extracts a channel ID from a Slack channel mention
 func extractChannelID(mention string) (string, error) {
-	// Accepts a typical Slack channel mention format: <#CHANNELID|channel_name>
-	re := regexp.MustCompile(`<#(C[A-Z0-9]+)(?:\|[^>]+)?>`)
-	match := re.FindStringSubmatch(mention)
+	// Accepts Slack channel mention formats:
+	// - Public channels: <#CXXXXXXXX|channel_name>
+	// - Private channels: <#GXXXXXXXX|channel_name> or <#GXXXXXXXX|>
+	match := channelMentionRegex.FindStringSubmatch(mention)
 	if len(match) != 2 {
 		return "", fmt.Errorf("invalid channel mention format: %s", mention)
 	}

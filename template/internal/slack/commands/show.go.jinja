@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/slack-go/slack"
 	"{{ github_path }}/internal/repository"
@@ -97,8 +98,8 @@ func (c *ShowCommand) showRotation(ctx context.Context, teamID, label string) (s
 	// Build a table (as a code block) for the upcoming rotation schedule.
 	table := "```\n"
 
-	table += fmt.Sprintf("%-18s %-12s %-12s\n", "Member", "From Date", "To Date")
-	table += "---------------------------------------------\n"
+	table += fmt.Sprintf("%-25s %-12s %-12s\n", "Member", "From Date", "To Date")
+	table += "------------------------------------------------\n"
 
 	scheduleFrom := r.LastRotationDate
 	scheduleTo := r.NextRotationDate
@@ -113,7 +114,7 @@ func (c *ShowCommand) showRotation(ctx context.Context, teamID, label string) (s
 			prefix = ">> "
 		}
 
-		table += fmt.Sprintf("%s%-15s %-12s %-12s\n", prefix, userName,
+		table += fmt.Sprintf("%s%-22s %-12s %-12s\n", prefix, userName,
 			scheduleFrom.Format("2006-01-02"), scheduleTo.Format("2006-01-02"))
 		scheduleFrom = scheduleTo
 		scheduleTo = rotationutil.CalculateNextRotationDate(scheduleFrom, r.Frequency)
@@ -133,16 +134,36 @@ func (c *ShowCommand) showRotation(ctx context.Context, teamID, label string) (s
 		channelInfo = fmt.Sprintf("<#%s>", r.SlackChannelID)
 	}
 
-	summaryText := fmt.Sprintf("Rotation `%s`:\n• Current owner: <@%s> (%s to %s)\n• Next owner: <@%s> (%s to %s)\n• Channel: %s\n• Frequency: %s",
-		r.RotationLabel, 
-		r.CurrentOwner, 
-		r.LastRotationDate.Format("2006-01-02"), 
-		r.NextRotationDate.Format("2006-01-02"),
-		nextOwner,
-		nextOwnerFrom.Format("2006-01-02"),
-		nextOwnerTo.Format("2006-01-02"),
-		channelInfo,
-		r.Frequency)
+	// Check if rotation is in the future
+	now := time.Now()
+	isFutureRotation := r.LastRotationDate.After(now)
+
+	var summaryText string
+	if isFutureRotation {
+		// For future rotations
+		summaryText = fmt.Sprintf("Rotation `%s`:\n• Next owner: <@%s> (%s to %s)\n• Following: <@%s> (%s to %s)\n• Channel: %s\n• Frequency: %s",
+			r.RotationLabel, 
+			r.CurrentOwner, // The "current owner" field is actually the next person in a future rotation
+			r.LastRotationDate.Format("2006-01-02"), 
+			r.NextRotationDate.Format("2006-01-02"),
+			nextOwner,
+			nextOwnerFrom.Format("2006-01-02"),
+			nextOwnerTo.Format("2006-01-02"),
+			channelInfo,
+			r.Frequency)
+	} else {
+		// For current rotations (original logic)
+		summaryText = fmt.Sprintf("Rotation `%s`:\n• Current owner: <@%s> (%s to %s)\n• Next owner: <@%s> (%s to %s)\n• Channel: %s\n• Frequency: %s",
+			r.RotationLabel, 
+			r.CurrentOwner, 
+			r.LastRotationDate.Format("2006-01-02"), 
+			r.NextRotationDate.Format("2006-01-02"),
+			nextOwner,
+			nextOwnerFrom.Format("2006-01-02"),
+			nextOwnerTo.Format("2006-01-02"),
+			channelInfo,
+			r.Frequency)
+	}
 
 	// Create Slack blocks: one for the summary and one for the schedule table.
 	summaryBlock := slack.NewSectionBlock(
